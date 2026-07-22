@@ -4,9 +4,6 @@ import { useStatus } from '../../hooks/useDeviceState'
 import { useDeviceStore } from '../../store/deviceStore'
 
 const MIN = 10
-/** Minimum enforced gap (mm) between comfortable and max depth; mirrors
- * MIN_DEPTH_GAP_MM in src/state.rs. */
-const GAP = 5
 
 /**
  * Two-tier global depth ceiling.
@@ -17,12 +14,13 @@ const GAP = 5
  * press toward or hold a single far point — ramp, HDSP, HSP, learn, drill,
  * impale, echo, and the Hold the Line game.
  *
- * Comfortable depth is always kept below max depth. Max depth is
- * authoritative: lowering it pulls comfortable depth down to fit (the bridge
- * does this and echoes the new comfortable value back over telemetry — see
- * `SetMaxDepth` in src/modbus/driver.rs). Max depth can't be changed while a
- * program is running; comfortable depth has no such lock. Both are global
- * (not per-mode) and persisted on the device.
+ * Comfortable depth never exceeds max depth (it may equal it — no minimum
+ * gap is enforced). Max depth is authoritative: lowering it pulls comfortable
+ * depth down to fit (the bridge does this and echoes the new comfortable
+ * value back over telemetry — see `SetMaxDepth` in src/modbus/driver.rs).
+ * Max depth can't be changed while a program is running; comfortable depth
+ * has no such lock. Both are global (not per-mode) and persisted on the
+ * device.
  *
  * Each slider's visual scale is fixed at [0, stroke] — it never rescales when
  * the *other* slider moves the allowed range, only the draggable portion
@@ -42,7 +40,7 @@ export function MaxDepthControl() {
   // Local slider values, synced from the device (another client may change
   // them — including the bridge itself pulling comfortable down when max
   // depth shrinks below it).
-  const [comfortable, setComfortable] = useState(comfortableDepthMm || Math.max(MIN, stroke - GAP))
+  const [comfortable, setComfortable] = useState(comfortableDepthMm || stroke)
   const prevComfortable = useRef(comfortableDepthMm)
   if (comfortableDepthMm !== prevComfortable.current) {
     prevComfortable.current = comfortableDepthMm
@@ -61,7 +59,7 @@ export function MaxDepthControl() {
   // Allowed-value limits derived from the device's authoritative (committed)
   // values, not the in-flight drag value — but note these bound the *value*,
   // not the slider's visual scale (see DepthSlider).
-  const comfortableLimitMax = Math.min(stroke - GAP, (maxDepthMm || stroke) - GAP)
+  const comfortableLimitMax = Math.min(stroke, maxDepthMm || stroke)
   const comfortableLimitMin = Math.min(MIN, comfortableLimitMax)
 
   const commitComfortable = (mm: number) => {

@@ -10,10 +10,6 @@ use tokio::sync::oneshot;
 use crate::config::MotionProfile;
 use crate::rpc::{HampPlayState, HspPlayState, Point};
 
-/// Minimum enforced gap (mm) between `comfortable_depth_mm` and `max_depth_mm`
-/// — comfortable depth is always clamped at least this far below max depth.
-pub const MIN_DEPTH_GAP_MM: f32 = 5.0;
-
 /// Coarse operating mode tag. Mirrors the on-device `Mode` enum for the subset
 /// the bridge implements; per-mode runtime lives in dedicated fields below.
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
@@ -514,9 +510,9 @@ pub struct AppState {
     /// surge, tide, trace, tempo, and the fixed-zone games (edge & recover,
     /// gauntlet, deadman's climb, stillness) all rescale `[0, stroke] → [0,
     /// comfortable_depth]` so they run between the entrance (0) and this depth
-    /// — scaled, not hard-clamped. Always kept at least [`MIN_DEPTH_GAP_MM`]
-    /// below `max_depth_mm`. 0.0 means "unset → full stroke". Set at boot and
-    /// via `BridgeCommand::SetComfortableDepth`.
+    /// — scaled, not hard-clamped. Never exceeds `max_depth_mm` (may equal it).
+    /// 0.0 means "unset → full stroke". Set at boot and via
+    /// `BridgeCommand::SetComfortableDepth`.
     pub comfortable_depth_mm: f32,
     /// Depth ceiling for modes that press toward or hold a single far point
     /// rather than oscillating in a fixed zone: ramp, HDSP, HSP, learn, drill,
@@ -743,7 +739,7 @@ pub enum BridgeCommand {
         reply: oneshot::Sender<Result<Vec<u16>, String>>,
     },
     /// Set the comfortable depth (mm) for oscillating modes. Clamped to
-    /// `[0, max_depth - MIN_DEPTH_GAP_MM]` and persisted across reboots.
+    /// `[0, max_depth]` (may equal max depth) and persisted across reboots.
     /// Fire-and-forget; always succeeds (clamped rather than rejected).
     SetComfortableDepth { mm: f32 },
     /// Set the max depth (mm) for modes that press toward or hold a single far

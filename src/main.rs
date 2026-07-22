@@ -67,10 +67,10 @@ async fn main() -> anyhow::Result<()> {
     // Comfortable-depth ceiling: persisted value, or — on first boot / upgrade
     // from before this setting existed — the max-depth ceiling itself, so
     // oscillating modes keep whatever travel range was already configured for
-    // safety. Always kept below max depth by at least MIN_DEPTH_GAP_MM.
+    // safety. Never exceeds max depth (may equal it).
     app_state.comfortable_depth_mm = rod::modbus::driver::load_comfortable_depth()
         .unwrap_or(app_state.max_depth_mm)
-        .min(app_state.max_depth_mm - rod::state::MIN_DEPTH_GAP_MM)
+        .min(app_state.max_depth_mm)
         .max(0.0);
     let state = Arc::new(RwLock::new(app_state));
     let (cmd_tx, cmd_rx) = mpsc::channel(CMD_CHANNEL);
