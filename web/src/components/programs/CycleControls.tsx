@@ -1,11 +1,131 @@
-import { useEffect, useRef, useState } from 'react'
+import { useCallback, useEffect, useRef, useState } from 'react'
 import { useSendCommand } from '../../hooks/useSendCommand'
 import { useStatus } from '../../hooks/useDeviceState'
-import { CycleManual } from './CycleManual'
+import { usePreferencesStore } from '../../store/preferencesStore'
+import type { Command, CyclePatternParams, CycleState } from '../../types/sscp'
+import { CycleManual, CYCLE_PATTERNS } from './CycleManual'
+import { RangeSlider } from './sliders'
+
+const DEFAULT_PATTERN_PARAMS: CyclePatternParams = { speed: 1, intensity: 1, reps: 1, pauseS: 0 }
+
+function CycleParamsPanel({
+  cycle,
+  activePattern,
+  send,
+}: {
+  cycle: CycleState | undefined
+  activePattern: number | undefined
+  send: (cmd: Command) => void
+}) {
+  const [selectedPattern, setSelectedPattern] = useState(activePattern ?? 0)
+  const confirmed = cycle?.params?.[selectedPattern] ?? DEFAULT_PATTERN_PARAMS
+
+  const [localSpeed, setLocalSpeed] = useState(confirmed.speed)
+  const [localIntensity, setLocalIntensity] = useState(confirmed.intensity)
+  const [localReps, setLocalReps] = useState(confirmed.reps)
+  const [localPause, setLocalPause] = useState(confirmed.pauseS)
+
+  // Re-sync local sliders whenever the selected pattern changes, or the
+  // server confirms a new value for the pattern currently being edited.
+  const prevPattern = useRef(selectedPattern)
+  const prevConfirmed = useRef(confirmed)
+  if (selectedPattern !== prevPattern.current) {
+    prevPattern.current = selectedPattern
+    prevConfirmed.current = confirmed
+    setLocalSpeed(confirmed.speed)
+    setLocalIntensity(confirmed.intensity)
+    setLocalReps(confirmed.reps)
+    setLocalPause(confirmed.pauseS)
+  } else if (confirmed !== prevConfirmed.current) {
+    const prev = prevConfirmed.current
+    prevConfirmed.current = confirmed
+    if (confirmed.speed !== prev.speed) setLocalSpeed(confirmed.speed)
+    if (confirmed.intensity !== prev.intensity) setLocalIntensity(confirmed.intensity)
+    if (confirmed.reps !== prev.reps) setLocalReps(confirmed.reps)
+    if (confirmed.pauseS !== prev.pauseS) setLocalPause(confirmed.pauseS)
+  }
+
+  const commit = useCallback((patch: Partial<CyclePatternParams>) => {
+    send({ type: 'cycle_config', pattern: selectedPattern, ...patch })
+  }, [send, selectedPattern])
+
+  function resetToDefaults() {
+    send({ type: 'cycle_config', pattern: selectedPattern, ...DEFAULT_PATTERN_PARAMS })
+  }
+
+  return (
+    <div className="flex flex-col gap-4 rounded-2xl bg-slate-800/60 border border-slate-700/60 p-4">
+      <div className="flex items-center justify-between gap-2">
+        <span className="text-[10px] uppercase tracking-widest text-slate-500">Pattern parameters</span>
+        <button
+          onClick={resetToDefaults}
+          className="text-[11px] text-slate-400 hover:text-slate-200 transition-colors"
+        >
+          Reset to defaults
+        </button>
+      </div>
+
+      <select
+        value={selectedPattern}
+        onChange={(e) => setSelectedPattern(parseInt(e.target.value, 10))}
+        className="w-full rounded-xl bg-slate-900 border border-slate-700 text-sm text-slate-200 px-3 py-2"
+      >
+        {CYCLE_PATTERNS.map((p, i) => (
+          <option key={i} value={i}>
+            {i + 1}. {p.name}
+          </option>
+        ))}
+      </select>
+
+      <RangeSlider
+        label="Speed"
+        value={localSpeed}
+        min={0.25}
+        max={3}
+        step={0.05}
+        formatValue={(v) => `${v.toFixed(2)}×`}
+        onChange={setLocalSpeed}
+        onCommit={(v) => commit({ speed: v })}
+        accent
+      />
+      <RangeSlider
+        label="Intensity (gentle ↔ hard)"
+        value={localIntensity}
+        min={0}
+        max={1.5}
+        step={0.05}
+        formatValue={(v) => `${Math.round(v * 100)}%`}
+        onChange={setLocalIntensity}
+        onCommit={(v) => commit({ intensity: v })}
+      />
+      <RangeSlider
+        label="Strokes per loop"
+        value={localReps}
+        min={1}
+        max={8}
+        step={1}
+        formatValue={(v) => `${Math.round(v)}`}
+        onChange={setLocalReps}
+        onCommit={(v) => commit({ reps: Math.round(v) })}
+      />
+      <RangeSlider
+        label="Pause after loop"
+        value={localPause}
+        min={0}
+        max={10}
+        step={0.5}
+        formatValue={(v) => `${v.toFixed(1)}s`}
+        onChange={setLocalPause}
+        onCommit={(v) => commit({ pauseS: v })}
+      />
+    </div>
+  )
+}
 
 export function CycleControls() {
   const { mode, cycle } = useStatus()
   const send = useSendCommand()
+  const advancedModeEnabled = usePreferencesStore((s) => s.advancedModeEnabled)
 
   const isActive = mode === 'cycle'
 
@@ -170,6 +290,15 @@ export function CycleControls() {
             </p>
           )}
         </div>
+      )}
+
+      {/* Pattern parameters — advanced mode only */}
+      {advancedModeEnabled && (
+        <CycleParamsPanel
+          cycle={cycle}
+          activePattern={isActive ? cycle?.pattern : undefined}
+          send={send}
+        />
       )}
 
       {/* How it works */}

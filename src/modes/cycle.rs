@@ -16,6 +16,7 @@ use std::f32::consts::TAU;
 use std::sync::Arc;
 use std::time::Duration;
 
+use serde::{Deserialize, Serialize};
 use tokio::sync::{mpsc, RwLock};
 use tokio::time::{interval, Instant, MissedTickBehavior};
 use tracing::info;
@@ -46,6 +47,45 @@ pub const PATTERN_NAMES: [&str; 11] = [
 const PATTERN_PERIOD_S: [f32; 11] = [4.0, 4.0, 4.0, 5.0, 6.0, 5.0, 6.0, 8.0, 7.0, 16.0, 6.0];
 
 pub const PATTERN_COUNT: u32 = 11;
+
+/// Per-pattern user-adjustable playback parameters — a generic wrapper
+/// applied uniformly around every pattern's `pos(u)` shape, rather than
+/// bespoke knobs per pattern. Defaults reproduce the original fixed
+/// behaviour exactly.
+#[derive(Debug, Clone, Copy, PartialEq, Serialize, Deserialize)]
+#[serde(rename_all = "camelCase")]
+pub struct CyclePatternParams {
+    /// Playback rate multiplier (0.25–3.0). Effective period =
+    /// `PATTERN_PERIOD_S[idx] / speed`.
+    pub speed: f32,
+    /// Amplitude multiplier (0.0–1.5) applied around the stroke's centre —
+    /// "gentle ↔ hard". 1.0 reproduces the pattern's original swing.
+    pub intensity: f32,
+    /// How many times the base shape repeats before a pause ("strokes per
+    /// loop"), 1–8.
+    pub reps: u32,
+    /// Rest duration (seconds, 0–10) holding position after `reps`
+    /// repetitions complete, before the next loop starts.
+    pub pause_s: f32,
+}
+
+impl Default for CyclePatternParams {
+    fn default() -> Self {
+        CyclePatternParams {
+            speed: 1.0,
+            intensity: 1.0,
+            reps: 1,
+            pause_s: 0.0,
+        }
+    }
+}
+
+/// Phase of the reps/pause burst state machine driving one pattern.
+#[derive(Debug, Clone, Copy, PartialEq)]
+enum BurstPhase {
+    Stroking,
+    Pausing { remaining_s: f32 },
+}
 
 fn smoothstep01(v: f32) -> f32 {
     let v = v.clamp(0.0, 1.0);
@@ -128,6 +168,52 @@ fn pattern_pos(idx: usize, u: f32) -> f32 {
     p.clamp(0.0, 1.0)
 }
 
+/// Advance one tick of the reps/pause burst state machine wrapped around
+/// `pattern_pos`. Pure and deterministic so it can be driven directly by
+/// tests without any async/time machinery. Returns the updated `(u, rep,
+/// burst)` and, if a stroke should be issued this tick, the intensity-
+/// adjusted target position in `0..1` — `None` means hold the last position
+/// (resting between bursts).
+fn advance_burst(
+    idx: usize,
+    u: f32,
+    rep: u32,
+    burst: BurstPhase,
+    params: CyclePatternParams,
+    dt: f32,
+) -> (f32, u32, BurstPhase, Option<f32>) {
+    match burst {
+        BurstPhase::Pausing { remaining_s } => {
+            let remaining = remaining_s - dt;
+            if remaining <= 0.0 {
+                (0.0, 0, BurstPhase::Stroking, None)
+            } else {
+                (u, rep, BurstPhase::Pausing { remaining_s: remaining }, None)
+            }
+        }
+        BurstPhase::Stroking => {
+            let period = PATTERN_PERIOD_S[idx].max(0.1) / params.speed.max(0.05);
+            let mut u = u + dt / period;
+            let mut rep = rep;
+            let mut burst = BurstPhase::Stroking;
+            if u >= 1.0 {
+                u -= 1.0;
+                rep += 1;
+                if rep >= params.reps.max(1) {
+                    if params.pause_s > 0.0 {
+                        burst = BurstPhase::Pausing { remaining_s: params.pause_s };
+                    } else {
+                        rep = 0;
+                    }
+                }
+            }
+            let raw = pattern_pos(idx, u);
+            let p = (0.5 + (raw - 0.5) * params.intensity).clamp(0.0, 1.0);
+            (u, rep, burst, Some(p))
+        }
+    }
+}
+
 pub struct CycleTask {
     state: Arc<RwLock<AppState>>,
     cmd_tx: mpsc::Sender<ActuatorCommand>,
@@ -184,6 +270,8 @@ impl CycleTask {
         let mut pattern: u32 = 0;
         let mut paused = false;
         let mut u: f32 = 0.0;
+        let mut rep: u32 = 0;
+        let mut burst = BurstPhase::Stroking;
         let mut last_target = self.state.read().await.position_mm;
         {
             let mut st = self.state.write().await;
@@ -215,6 +303,8 @@ impl CycleTask {
                         pattern = 0;
                         paused = false;
                         u = 0.0;
+                        rep = 0;
+                        burst = BurstPhase::Stroking;
                         last_target = self.state.read().await.position_mm;
                         let _ = self.cmd_tx.send(ActuatorCommand::ServoOn(true)).await;
                         self.publish(pattern, paused).await;
@@ -228,6 +318,8 @@ impl CycleTask {
                         if !long_fired {
                             pattern = (pattern + 1) % PATTERN_COUNT;
                             u = 0.0;
+                            rep = 0;
+                            burst = BurstPhase::Stroking;
                             last_target = self.state.read().await.position_mm;
                             if paused {
                                 paused = false;
@@ -259,22 +351,27 @@ impl CycleTask {
                     info!(paused, "cycle: long press");
                 }
                 _ = tick.tick(), if !paused => {
-                    let period = PATTERN_PERIOD_S[pattern as usize].max(0.1);
-                    u = (u + dt / period).fract();
-                    let p = pattern_pos(pattern as usize, u);
-                    let rel = self.zone_min + p * (self.zone_max - self.zone_min);
-                    let target = rel * self.stroke_mm;
-                    let delta = target - last_target;
-                    if delta.abs() > 0.05 {
-                        let vel = (delta.abs() / dt).clamp(f32::MIN_POSITIVE, self.max_velocity_mm_s);
-                        let _ = self.cmd_tx.send(ActuatorCommand::MoveTo {
-                            pos_mm: target,
-                            vel_mm_s: vel,
-                            accel_g: self.accel_g,
-                            profile: self.profile,
-                            soften: false,
-                        }).await;
-                        last_target = target;
+                    let params = self.state.read().await.cycle.params[pattern as usize];
+                    let (new_u, new_rep, new_burst, out) =
+                        advance_burst(pattern as usize, u, rep, burst, params, dt);
+                    u = new_u;
+                    rep = new_rep;
+                    burst = new_burst;
+                    if let Some(p) = out {
+                        let rel = self.zone_min + p * (self.zone_max - self.zone_min);
+                        let target = rel * self.stroke_mm;
+                        let delta = target - last_target;
+                        if delta.abs() > 0.05 {
+                            let vel = (delta.abs() / dt).clamp(f32::MIN_POSITIVE, self.max_velocity_mm_s);
+                            let _ = self.cmd_tx.send(ActuatorCommand::MoveTo {
+                                pos_mm: target,
+                                vel_mm_s: vel,
+                                accel_g: self.accel_g,
+                                profile: self.profile,
+                                soften: false,
+                            }).await;
+                            last_target = target;
+                        }
                     }
                 }
             }
@@ -349,6 +446,78 @@ mod tests {
             hi = hi.max(p);
         }
         assert!(lo < 0.1 && hi > 0.9, "wander range {lo}..{hi}");
+    }
+
+    #[test]
+    fn default_params_reproduce_original_period_and_amplitude() {
+        // speed=1, intensity=1, reps=1, pause_s=0 must be a no-op wrapper:
+        // one full lap of pattern 0 (period 4.0s) with dt=0.5s (a power-of-two
+        // fraction, so accumulation is exact in f32) takes exactly 8 ticks,
+        // never pauses, and reports the raw (unscaled) shape.
+        let params = CyclePatternParams::default();
+        let (mut u, mut rep, mut burst) = (0.0_f32, 0_u32, BurstPhase::Stroking);
+        let mut wraps = 0;
+        for _ in 0..8 {
+            let (nu, nrep, nburst, out) = advance_burst(0, u, rep, burst, params, 0.5);
+            assert!(out.is_some(), "default params should never pause");
+            assert_eq!(out.unwrap(), pattern_pos(0, nu), "intensity=1 must not rescale the raw shape");
+            if nu < u {
+                wraps += 1;
+            }
+            u = nu;
+            rep = nrep;
+            burst = nburst;
+        }
+        assert!(matches!(burst, BurstPhase::Stroking));
+        assert_eq!(wraps, 1, "one full 4.0s period across 8 ticks of 0.5s should wrap exactly once");
+        assert_eq!(u, 0.0, "should land exactly back at u=0");
+        assert_eq!(rep, 0, "reps=1 with no pause resets rep on every wrap, not accumulate");
+    }
+
+    #[test]
+    fn reps_and_pause_hold_position_between_bursts() {
+        // period_eff = 4.0 / 4.0 = 1.0s = 8 ticks of 0.125s (power-of-two
+        // fraction, exact in f32); reps=1 so a pause starts right after the
+        // first full lap, and pause_s=1.0 is also exactly 8 ticks.
+        let params = CyclePatternParams {
+            speed: 4.0,
+            intensity: 1.0,
+            reps: 1,
+            pause_s: 1.0,
+        };
+        let (mut u, mut rep, mut burst) = (0.0_f32, 0_u32, BurstPhase::Stroking);
+        let mut stroked = 0;
+        let mut paused = 0;
+        // 24 ticks = stroke (8) + pause (8) + stroke again (8).
+        for _ in 0..24 {
+            let (nu, nrep, nburst, out) = advance_burst(0, u, rep, burst, params, 0.125);
+            match out {
+                Some(_) => stroked += 1,
+                None => paused += 1,
+            }
+            u = nu;
+            rep = nrep;
+            burst = nburst;
+        }
+        assert_eq!(stroked, 16, "expected two 8-tick strokes across 24 ticks");
+        assert_eq!(paused, 8, "expected one 8-tick pause across 24 ticks");
+    }
+
+    #[test]
+    fn intensity_scales_amplitude_around_center() {
+        // Triangle (idx 1) peaks at u=0.5 → raw 1.0; halved intensity should
+        // land the reported position halfway between raw and the 0.5 center.
+        let params = CyclePatternParams {
+            speed: 1.0,
+            intensity: 0.5,
+            reps: 1,
+            pause_s: 0.0,
+        };
+        // Start almost exactly at the peak (u=0.499) and take a tiny dt step
+        // so the resulting u stays ~0.5.
+        let (_, _, _, out) = advance_burst(1, 0.499, 0, BurstPhase::Stroking, params, 0.001);
+        let p = out.expect("stroking tick should produce a position");
+        assert!((p - 0.75).abs() < 0.01, "expected ~0.75 (halfway to 1.0), got {p}");
     }
 
     #[tokio::test(start_paused = true)]

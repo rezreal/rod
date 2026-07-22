@@ -218,12 +218,26 @@ pub struct GameRuntime {
 }
 
 /// Cycle (pattern-playlist) runtime.
-#[derive(Debug, Clone, Copy, PartialEq, Default)]
+#[derive(Debug, Clone, Copy, PartialEq)]
 pub struct CycleRuntime {
     pub active: bool,
     /// Current pattern index (0..PATTERN_COUNT).
     pub pattern: u32,
     pub paused: bool,
+    /// Per-pattern user-adjustable playback parameters, indexed by pattern.
+    pub params: [crate::modes::cycle::CyclePatternParams; crate::modes::cycle::PATTERN_COUNT as usize],
+}
+
+impl Default for CycleRuntime {
+    fn default() -> Self {
+        CycleRuntime {
+            active: false,
+            pattern: 0,
+            paused: false,
+            params: [crate::modes::cycle::CyclePatternParams::default();
+                crate::modes::cycle::PATTERN_COUNT as usize],
+        }
+    }
 }
 
 /// Learn (teach-and-repeat) runtime.

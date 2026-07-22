@@ -18,6 +18,8 @@ export function MaintenancePanel({ onClose }: Props) {
   const [showDiag, setShowDiag] = useState(false)
   const audioFeedbackEnabled    = usePreferencesStore((s) => s.audioFeedbackEnabled)
   const setAudioFeedbackEnabled = usePreferencesStore((s) => s.setAudioFeedbackEnabled)
+  const advancedModeEnabled     = usePreferencesStore((s) => s.advancedModeEnabled)
+  const setAdvancedModeEnabled  = usePreferencesStore((s) => s.setAdvancedModeEnabled)
 
   const isConnected = connectionState === 'connected'
   const hasAlarm    = alarmCode !== 0
@@ -131,6 +133,29 @@ export function MaintenancePanel({ onClose }: Props) {
               <span
                 className={`absolute top-0.5 left-0.5 w-5 h-5 bg-white rounded-full transition-transform ${
                   audioFeedbackEnabled ? 'translate-x-5' : ''
+                }`}
+              />
+            </button>
+          </div>
+
+          {/* Advanced mode */}
+          <div className="flex items-center justify-between gap-3 p-4 bg-slate-800/50 rounded-xl border border-slate-700">
+            <div>
+              <h3 className="text-sm font-semibold text-slate-200">Advanced mode</h3>
+              <p className="text-xs text-slate-500 mt-1">
+                Show per-pattern tuning controls (speed, intensity, strokes per loop, pause) in Cycle mode.
+              </p>
+            </div>
+            <button
+              onClick={() => setAdvancedModeEnabled(!advancedModeEnabled)}
+              aria-pressed={advancedModeEnabled}
+              className={`relative shrink-0 w-11 h-6 rounded-full transition-colors ${
+                advancedModeEnabled ? 'bg-cyan-600' : 'bg-slate-700'
+              }`}
+            >
+              <span
+                className={`absolute top-0.5 left-0.5 w-5 h-5 bg-white rounded-full transition-transform ${
+                  advancedModeEnabled ? 'translate-x-5' : ''
                 }`}
               />
             </button>

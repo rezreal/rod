@@ -105,6 +105,9 @@ pub struct CycleTelemetry {
     /// Total number of patterns to cycle through.
     pub pattern_count: u32,
     pub paused: bool,
+    /// Per-pattern playback parameters, indexed by pattern — always present
+    /// (even when idle) so the UI can initialise its sliders.
+    pub params: [crate::modes::cycle::CyclePatternParams; crate::modes::cycle::PATTERN_COUNT as usize],
 }
 
 #[derive(Debug, Clone, Serialize)]
@@ -398,7 +401,9 @@ pub fn build_telemetry(st: &AppState, cfg: &Config) -> Telemetry {
         None
     };
 
-    let cycle = if st.cycle.active {
+    // Always include cycle state (like HAMP) so the UI can initialise its
+    // per-pattern parameter sliders even while Cycle mode isn't running.
+    let cycle = {
         let idx = (st.cycle.pattern as usize)
             .min(crate::modes::cycle::PATTERN_NAMES.len().saturating_sub(1));
         Some(CycleTelemetry {
@@ -406,9 +411,8 @@ pub fn build_telemetry(st: &AppState, cfg: &Config) -> Telemetry {
             pattern_name: crate::modes::cycle::PATTERN_NAMES[idx],
             pattern_count: crate::modes::cycle::PATTERN_COUNT,
             paused: st.cycle.paused,
+            params: st.cycle.params,
         })
-    } else {
-        None
     };
 
     let learn = if st.learn.active {
@@ -671,6 +675,17 @@ pub enum Command {
     },
     /// Leave cycle mode: stop motion and release servo.
     CycleStop,
+    /// Update per-pattern playback parameters (partial update; unset fields
+    /// keep their current value). Applies live within one tick, whether or
+    /// not the pattern being edited is the one currently playing.
+    CycleConfig {
+        pattern: u32,
+        speed: Option<f32>,
+        intensity: Option<f32>,
+        reps: Option<u32>,
+        #[serde(alias = "pauseS")]
+        pause_s: Option<f32>,
+    },
     /// Enter learn (teach-and-repeat) mode.
     LearnStart,
     /// A button tap in learn mode: advance record → stop → play → re-arm.
@@ -829,6 +844,32 @@ mod tests {
         for json in cases {
             let result: Result<Command, _> = serde_json::from_str(json);
             assert!(result.is_ok(), "{json} failed to deserialize: {result:?}");
+        }
+    }
+
+    #[test]
+    fn cycle_config_deserializes_partial_updates() {
+        let full = r#"{"type":"cycle_config","pattern":3,"speed":1.5,"intensity":0.8,"reps":4,"pauseS":2.5}"#;
+        match serde_json::from_str::<Command>(full).expect("full CycleConfig should deserialize") {
+            Command::CycleConfig { pattern, speed, intensity, reps, pause_s } => {
+                assert_eq!(pattern, 3);
+                assert_eq!(speed, Some(1.5));
+                assert_eq!(intensity, Some(0.8));
+                assert_eq!(reps, Some(4));
+                assert_eq!(pause_s, Some(2.5));
+            }
+            other => panic!("wrong variant: {other:?}"),
+        }
+
+        let partial = r#"{"type":"cycle_config","pattern":0,"speed":2.0}"#;
+        match serde_json::from_str::<Command>(partial).expect("partial CycleConfig should deserialize") {
+            Command::CycleConfig { speed, intensity, reps, pause_s, .. } => {
+                assert_eq!(speed, Some(2.0));
+                assert_eq!(intensity, None);
+                assert_eq!(reps, None);
+                assert_eq!(pause_s, None);
+            }
+            other => panic!("wrong variant: {other:?}"),
         }
     }
 }
