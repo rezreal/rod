@@ -14,12 +14,11 @@ const STANDARD_ITEMS: NavItem[] = [
   },
   {
     id: 'hdsp',
-    label: 'Manual',
+    label: 'Touchpad',
     icon: (
       <svg viewBox="0 0 24 24" className="w-5 h-5" fill="none" stroke="currentColor" strokeWidth={2}>
-        <circle cx="12" cy="12" r="3" />
-        <line x1="12" y1="2" x2="12" y2="6" />
-        <line x1="12" y1="18" x2="12" y2="22" />
+        <rect x="4" y="3" width="16" height="18" rx="3" />
+        <circle cx="12" cy="12" r="2.5" fill="currentColor" stroke="none" />
       </svg>
     ),
   },
