@@ -1,2 +1,2 @@
 source "$BR2_EXTERNAL_ROD_PATH/package/rod/Config.in"
-source "$BR2_EXTERNAL_ROD_PATH/package/rpi-bt-firmware/Config.in"
+source "$BR2_EXTERNAL_ROD_PATH/package/rod-rpi-bt-firmware/Config.in"

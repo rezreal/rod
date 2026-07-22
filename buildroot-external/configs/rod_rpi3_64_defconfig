@@ -27,7 +27,7 @@ BR2_PACKAGE_RPI_FIRMWARE_VARIANT_DEFAULT=y
 BR2_PACKAGE_RPI_FIRMWARE_CUSTOM_CONFIG_FILE="$(BR2_EXTERNAL_ROD_PATH)/board/raspberrypi/rpi3/config.txt"
 
 # Broadcom BCM Bluetooth HCD firmware (BCM43430A1.hcd for RPi 3)
-BR2_PACKAGE_RPI_BT_FIRMWARE=y
+BR2_PACKAGE_ROD_RPI_BT_FIRMWARE=y
 
 # Init: systemd (service file uses After=bluetooth.service, journald, etc.)
 BR2_INIT_SYSTEMD=y
