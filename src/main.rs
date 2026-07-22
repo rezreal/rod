@@ -126,7 +126,9 @@ async fn main() -> anyhow::Result<()> {
     tokio::spawn(HspTask::new(state.clone(), shape_tx.clone(), notif_tx.clone(), &cfg).run(hsp_rx));
     tokio::spawn(DrillTask::new(state.clone(), shape_tx.clone(), &cfg).run(drill_rx));
     tokio::spawn(RampTask::new(state.clone(), shape_tx.clone(), &cfg).run(ramp_rx));
-    tokio::spawn(GameTask::new(state.clone(), shape_tx.clone(), &cfg).run(game_rx));
+    tokio::spawn(
+        GameTask::new(state.clone(), shape_tx.clone(), piupiu_tx.clone(), &cfg).run(game_rx),
+    );
     tokio::spawn(CycleTask::new(state.clone(), shape_tx.clone(), &cfg).run(cycle_rx));
     tokio::spawn(LearnTask::new(state.clone(), shape_tx.clone(), &cfg).run(learn_rx));
     tokio::spawn(PulseTask::new(state.clone(), shape_tx.clone(), &cfg).run(pulse_rx));

@@ -25,7 +25,13 @@ use tracing::info;
 
 use super::GameControl;
 use crate::config::{Config, Games};
+use crate::devices::PiuPiuControl;
 use crate::state::{ActuatorCommand, AppMode, AppState, GameKind, GamePhase};
+
+/// Celebration pulse pattern fired on a game win (see [`GameTask::celebrate_win`]).
+const TADA_PULSE: Duration = Duration::from_millis(150);
+const TADA_GAP: Duration = Duration::from_millis(150);
+const TADA_PULSES: u32 = 3;
 
 /// Settle after a ServoOn(true) before a move is accepted (same as drill/peck).
 const SERVO_SETTLE: Duration = Duration::from_millis(50);
@@ -99,6 +105,7 @@ impl Button {
 pub struct GameTask {
     state: Arc<RwLock<AppState>>,
     cmd_tx: mpsc::Sender<ActuatorCommand>,
+    piupiu: mpsc::Sender<PiuPiuControl>,
     stroke_mm: f32,
     g: Games,
     deadman: Duration,
@@ -109,12 +116,14 @@ impl GameTask {
     pub fn new(
         state: Arc<RwLock<AppState>>,
         cmd_tx: mpsc::Sender<ActuatorCommand>,
+        piupiu: mpsc::Sender<PiuPiuControl>,
         cfg: &Config,
     ) -> Self {
         let g = cfg.actuator.games.clone();
         GameTask {
             state,
             cmd_tx,
+            piupiu,
             stroke_mm: cfg.stroke_mm(),
             deadman: Duration::from_millis(g.deadman_timeout_ms.max(20)),
             tick: Duration::from_millis(g.tick_ms.max(20)),
@@ -326,12 +335,38 @@ impl GameTask {
         duration_s: f32,
         holding: bool,
     ) {
-        let mut st = self.state.write().await;
-        st.game.phase = phase;
-        st.game.intensity = intensity.clamp(0.0, 1.0);
-        st.game.level = level;
-        st.game.duration_s = duration_s;
-        st.game.holding = holding;
+        let entering_win = {
+            let mut st = self.state.write().await;
+            let entering_win = phase == GamePhase::Win && st.game.phase != GamePhase::Win;
+            st.game.phase = phase;
+            st.game.intensity = intensity.clamp(0.0, 1.0);
+            st.game.level = level;
+            st.game.duration_s = duration_s;
+            st.game.holding = holding;
+            entering_win
+        };
+        if entering_win {
+            self.celebrate_win();
+        }
+    }
+
+    /// Fire a "tada" — three separate PiuPiu squirts — on the transition into
+    /// a win. Runs in the background so it never delays the game loop; a
+    /// no-op (silently) if no PiuPiu is connected.
+    fn celebrate_win(&self) {
+        let state = self.state.clone();
+        let piupiu = self.piupiu.clone();
+        tokio::spawn(async move {
+            if !state.read().await.piupiu.connected {
+                return;
+            }
+            for _ in 0..TADA_PULSES {
+                let _ = piupiu.send(PiuPiuControl::Squirt { active: true }).await;
+                tokio::time::sleep(TADA_PULSE).await;
+                let _ = piupiu.send(PiuPiuControl::Squirt { active: false }).await;
+                tokio::time::sleep(TADA_GAP).await;
+            }
+        });
     }
 
     fn ticker(&self) -> tokio::time::Interval {
@@ -639,7 +674,8 @@ mod tests {
         let state = Arc::new(RwLock::new(AppState::new("u".into(), 1)));
         let (cmd_tx, cmd_rx) = mpsc::channel(64);
         let (ctrl_tx, ctrl_rx) = mpsc::channel(16);
-        let h = tokio::spawn(GameTask::new(state.clone(), cmd_tx, &cfg()).run(ctrl_rx));
+        let (piupiu_tx, _piupiu_rx) = mpsc::channel(16);
+        let h = tokio::spawn(GameTask::new(state.clone(), cmd_tx, piupiu_tx, &cfg()).run(ctrl_rx));
         (state, ctrl_tx, cmd_rx, h)
     }
 
@@ -751,6 +787,103 @@ mod tests {
         assert_eq!(state.read().await.game.phase, GamePhase::Active);
 
         ctrl.send(GameControl::Stop).await.unwrap();
+        drop(ctrl);
+        let _ = h.await;
+    }
+
+    /// Small climb (2 checkpoints, near-instant) so the win fires in a couple
+    /// of ticks; sets up its own channels (rather than `spawn()`) to observe
+    /// the PiuPiu control channel directly.
+    #[allow(clippy::type_complexity)]
+    fn spawn_climb() -> (
+        Arc<RwLock<AppState>>,
+        mpsc::Sender<GameControl>,
+        mpsc::Receiver<ActuatorCommand>,
+        mpsc::Receiver<PiuPiuControl>,
+        tokio::task::JoinHandle<()>,
+    ) {
+        let state = Arc::new(RwLock::new(AppState::new("u".into(), 1)));
+        let (cmd_tx, cmd_rx) = mpsc::channel(64);
+        let (ctrl_tx, ctrl_rx) = mpsc::channel(16);
+        let (piupiu_tx, piupiu_rx) = mpsc::channel(16);
+        let mut c = cfg();
+        c.actuator.games.climb_checkpoints = 2;
+        c.actuator.games.climb_total_s = 0.2;
+        let h = tokio::spawn(GameTask::new(state.clone(), cmd_tx, piupiu_tx, &c).run(ctrl_rx));
+        (state, ctrl_tx, cmd_rx, piupiu_rx, h)
+    }
+
+    /// With `climb_checkpoints = 2` and `climb_total_s = 0.2` (dt = 0.1s per
+    /// tick), intensity crosses the 2nd/last checkpoint on exactly the 2nd
+    /// held beat, so 3 beats deterministically reaches the win. The game
+    /// phase itself flips straight back to `Idle` in the same tick (the
+    /// dispatcher auto-stops on win) — a snapshot read can miss the
+    /// momentary `Win`, so these tests assert on the celebration's actual
+    /// observable effect (the PiuPiu channel) instead of the transient phase.
+    async fn climb_to_win(ctrl: &mpsc::Sender<GameControl>, cmd_rx: &mut mpsc::Receiver<ActuatorCommand>) {
+        ready(ctrl, cmd_rx).await;
+        for _ in 0..3 {
+            beat(ctrl, cmd_rx, true).await;
+        }
+    }
+
+    #[tokio::test(start_paused = true)]
+    async fn climb_win_fires_three_piupiu_pulses_when_connected() {
+        let (state, ctrl, mut cmd_rx, mut piupiu_rx, h) = spawn_climb();
+        state.write().await.piupiu.connected = true;
+        ctrl.send(GameControl::Start {
+            kind: GameKind::DeadmansClimb,
+        })
+        .await
+        .unwrap();
+        climb_to_win(&ctrl, &mut cmd_rx).await;
+
+        // Let the background celebration task run its three pulses to
+        // completion. Each `sleep` only registers its *next* timer once
+        // polled after the previous one fires, so drive time forward in
+        // small steps rather than one big jump.
+        for _ in 0..(2 * TADA_PULSES + 2) {
+            tokio::time::advance(TADA_PULSE.max(TADA_GAP)).await;
+            tokio::task::yield_now().await;
+        }
+
+        let mut pulses = Vec::new();
+        while let Ok(c) = piupiu_rx.try_recv() {
+            pulses.push(c);
+        }
+        let on = pulses
+            .iter()
+            .filter(|c| matches!(c, PiuPiuControl::Squirt { active: true }))
+            .count();
+        let off = pulses
+            .iter()
+            .filter(|c| matches!(c, PiuPiuControl::Squirt { active: false }))
+            .count();
+        assert_eq!((on, off), (3, 3), "expected 3 on/off squirt pairs: {pulses:?}");
+
+        drop(ctrl);
+        let _ = h.await;
+    }
+
+    #[tokio::test(start_paused = true)]
+    async fn climb_win_sends_nothing_when_piupiu_disconnected() {
+        let (_state, ctrl, mut cmd_rx, mut piupiu_rx, h) = spawn_climb();
+        // No `state.piupiu.connected = true` — stays disconnected.
+        ctrl.send(GameControl::Start {
+            kind: GameKind::DeadmansClimb,
+        })
+        .await
+        .unwrap();
+        climb_to_win(&ctrl, &mut cmd_rx).await;
+
+        tokio::time::advance(Duration::from_secs(2)).await;
+        tokio::task::yield_now().await;
+
+        assert!(
+            piupiu_rx.try_recv().is_err(),
+            "no PiuPiu connected: the win celebration must stay silent"
+        );
+
         drop(ctrl);
         let _ = h.await;
     }
