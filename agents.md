@@ -8,7 +8,7 @@ The Vite dev server for the Rod web UI is configured to run on **port 60000**.
 
 To start the development server:
 ```bash
-cd web && npm run dev
+cd web && pnpm dev
 ```
 
 The app will be available at `http://localhost:60000`
