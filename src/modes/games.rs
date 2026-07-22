@@ -12,7 +12,7 @@
 //!     and the driver's status poll still reports `position_mm`, so we can
 //!     *sense* the user pushing/pulling it (used by Hold the Line and Stillness).
 //!
-//! Live status (`phase`, `intensity`, `level`, `score_s`) is published to
+//! Live status (`phase`, `intensity`, `level`, `duration_s`) is published to
 //! [`AppState::game`] for the UI; the web manual documents each game's rules.
 
 use std::sync::Arc;
@@ -228,7 +228,7 @@ impl GameTask {
             phase: GamePhase::Armed,
             intensity: 0.0,
             level: 0,
-            score_s: 0.0,
+            duration_s: 0.0,
             holding: false,
         };
         st.set_mode(AppMode::Game);
@@ -259,7 +259,7 @@ impl GameTask {
             phase: GamePhase::Idle,
             intensity: 0.0,
             level: 0,
-            score_s: 0.0,
+            duration_s: 0.0,
             holding: false,
         };
         st.set_mode(AppMode::Game);
@@ -323,14 +323,14 @@ impl GameTask {
         phase: GamePhase,
         intensity: f32,
         level: u32,
-        score_s: f32,
+        duration_s: f32,
         holding: bool,
     ) {
         let mut st = self.state.write().await;
         st.game.phase = phase;
         st.game.intensity = intensity.clamp(0.0, 1.0);
         st.game.level = level;
-        st.game.score_s = score_s;
+        st.game.duration_s = duration_s;
         st.game.holding = holding;
     }
 
@@ -349,7 +349,7 @@ impl GameTask {
         let dt = self.tick.as_secs_f32();
         let mut intensity = 0.0f32;
         let mut edges = 0u32;
-        let mut score = 0.0f32;
+        let mut duration = 0.0f32;
         let mut prev_held = false;
         let mut out = false;
         let mut next = Some(Instant::now());
@@ -371,7 +371,7 @@ impl GameTask {
                     next = Some(Instant::now() + d);
                 }
                 _ = tick.tick() => {
-                    score += dt;
+                    duration += dt;
                     let phase = if btn.held {
                         intensity = (intensity + dt / self.g.edge_climb_s.max(0.1)).min(1.0);
                         GamePhase::Active
@@ -382,7 +382,7 @@ impl GameTask {
                         GamePhase::Recover
                     };
                     prev_held = btn.held;
-                    self.publish(phase, intensity, edges, score, btn.held).await;
+                    self.publish(phase, intensity, edges, duration, btn.held).await;
                 }
             }
         }
@@ -395,7 +395,7 @@ impl GameTask {
         let mut tick = self.ticker();
         let mut btn = Button::default();
         let dt = self.tick.as_secs_f32();
-        let mut score = 0.0f32;
+        let mut duration = 0.0f32;
         let mut engaged_s = 0.0f32;
         let mut lines_lost = 0u32;
         // The line the rod must not be pushed past; set on first engage.
@@ -420,13 +420,13 @@ impl GameTask {
                 }
                 _ = tick.tick() => {
                     if !btn.held {
-                        self.publish(GamePhase::Recover, 0.0, lines_lost, score, false).await;
+                        self.publish(GamePhase::Recover, 0.0, lines_lost, duration, false).await;
                         continue;
                     }
                     let pos = self.position_mm().await;
                     let line = line.get_or_insert(pos);
                     engaged_s += dt;
-                    score += dt;
+                    duration += dt;
                     // Thrust ramps with engaged time.
                     let frac = (engaged_s / self.g.hold_push_ramp_s.max(0.1)).min(1.0);
                     let push = self.g.hold_push_start_pct
@@ -444,7 +444,7 @@ impl GameTask {
                         *line = pos; // re-anchor forward
                         phase = GamePhase::Slip;
                     }
-                    self.publish(phase, frac, lines_lost, score, true).await;
+                    self.publish(phase, frac, lines_lost, duration, true).await;
                 }
             }
         }
@@ -456,7 +456,7 @@ impl GameTask {
         let mut tick = self.ticker();
         let mut btn = Button::default();
         let dt = self.tick.as_secs_f32();
-        let mut score = 0.0f32;
+        let mut duration = 0.0f32;
         let mut completed = 0u32;
         let mut prev_held = false;
         // Phase machine: resting (servo free), or working (oscillating).
@@ -485,7 +485,7 @@ impl GameTask {
                 _ = tick.tick() => {
                     phase_left -= dt;
                     if working {
-                        score += dt;
+                        duration += dt;
                         // Releasing mid-work aborts the interval (no credit).
                         if !btn.held {
                             working = false;
@@ -500,7 +500,7 @@ impl GameTask {
                             next = None;
                             self.servo(false).await;
                         }
-                        self.publish(GamePhase::Active, 0.85, completed, score, btn.held).await;
+                        self.publish(GamePhase::Active, 0.85, completed, duration, btn.held).await;
                     } else {
                         // Resting: a fresh press starts the next interval.
                         let ready = btn.held && !prev_held;
@@ -514,7 +514,7 @@ impl GameTask {
                             // No-show: the gauntlet ends.
                             return Exit::Stop;
                         }
-                        self.publish(GamePhase::Rest, 0.0, completed, score, btn.held).await;
+                        self.publish(GamePhase::Rest, 0.0, completed, duration, btn.held).await;
                     }
                     prev_held = btn.held;
                 }
@@ -532,7 +532,7 @@ impl GameTask {
         let n = self.g.climb_checkpoints.max(1);
         let mut intensity = 0.0f32;
         let mut level = 0u32; // highest banked checkpoint
-        let mut score = 0.0f32;
+        let mut duration = 0.0f32;
         let mut out = false;
         let mut next = Some(Instant::now());
 
@@ -553,7 +553,7 @@ impl GameTask {
                     next = Some(Instant::now() + d);
                 }
                 _ = tick.tick() => {
-                    score += dt;
+                    duration += dt;
                     let floor = level as f32 / n as f32; // banked intensity floor
                     let phase = if btn.held {
                         intensity = (intensity + dt / self.g.climb_total_s.max(0.1)).min(1.0);
@@ -567,7 +567,13 @@ impl GameTask {
                         intensity = (intensity - self.g.edge_backoff_rate * dt).max(floor);
                         GamePhase::Recover
                     };
-                    self.publish(phase, intensity, level, score, btn.held).await;
+                    // Top checkpoint banked: the climb is won, regardless of
+                    // whether the button is still held at this instant.
+                    if level >= n {
+                        self.publish(GamePhase::Win, 1.0, level, duration, btn.held).await;
+                        return Exit::Stop;
+                    }
+                    self.publish(phase, intensity, level, duration, btn.held).await;
                 }
             }
         }
@@ -583,7 +589,7 @@ impl GameTask {
         let mut tick = self.ticker();
         let mut btn = Button::default();
         let dt = self.tick.as_secs_f32();
-        let mut score = 0.0f32;
+        let mut duration = 0.0f32;
         let mut center = self.position_mm().await;
         let mut lives = self.g.stillness_lives.max(1);
         let debounce = Duration::from_millis(self.g.stillness_debounce_ms.max(1));
@@ -602,7 +608,7 @@ impl GameTask {
                 _ = sleep_until_opt(btn.deadline), if btn.deadline.is_some() => btn.expire(),
                 _ = tick.tick() => {
                     if !btn.held {
-                        self.publish(GamePhase::Recover, 0.0, lives, score, false).await;
+                        self.publish(GamePhase::Recover, 0.0, lives, duration, false).await;
                         continue;
                     }
                     let pos = self.position_mm().await;
@@ -616,17 +622,17 @@ impl GameTask {
                         cooldown_until = Some(Instant::now() + debounce);
                         center = pos;
                         if lives == 0 {
-                            self.publish(GamePhase::Slip, 1.0, 0, score, true).await;
+                            self.publish(GamePhase::Slip, 1.0, 0, duration, true).await;
                             return Exit::Stop;
                         }
                         self.vibrate().await;
-                        self.publish(GamePhase::Slip, frac, lives, score, true).await;
+                        self.publish(GamePhase::Slip, frac, lives, duration, true).await;
                         continue;
                     }
                     if dev <= self.g.stillness_tolerance_mm {
-                        score += dt;
+                        duration += dt;
                     }
-                    self.publish(GamePhase::Hold, frac, lives, score, true).await;
+                    self.publish(GamePhase::Hold, frac, lives, duration, true).await;
                 }
             }
         }

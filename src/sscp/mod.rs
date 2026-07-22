@@ -106,14 +106,14 @@ pub struct CycleTelemetry {
 pub struct GameTelemetry {
     /// Active game kind, e.g. "edge_recover" (snake_case, matches GameStart).
     pub kind: &'static str,
-    /// Coarse phase: "active" | "recover" | "rest" | "hold" | "slip" | "idle".
+    /// Coarse phase: "active" | "recover" | "rest" | "hold" | "slip" | "win" | "idle".
     pub phase: &'static str,
     /// Generic 0..1 drive/closeness meter.
     pub intensity: f32,
     /// Level / interval / checkpoint / lines-lost, per game.
     pub level: u32,
-    /// Primary endurance score in seconds.
-    pub score_s: f32,
+    /// Elapsed duration, in seconds.
+    pub duration_s: f32,
     /// Whether the deadman button is currently held.
     pub holding: bool,
 }
@@ -385,7 +385,7 @@ pub fn build_telemetry(st: &AppState, cfg: &Config) -> Telemetry {
             phase: st.game.phase.as_str(),
             intensity: st.game.intensity,
             level: st.game.level,
-            score_s: st.game.score_s,
+            duration_s: st.game.duration_s,
             holding: st.game.holding,
         })
     } else {

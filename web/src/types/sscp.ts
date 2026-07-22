@@ -14,7 +14,7 @@ export type GameKind =
   | 'deadmans_climb'
   | 'stillness'
 /** Coarse phase a game is in. */
-export type GamePhase = 'idle' | 'armed' | 'active' | 'recover' | 'rest' | 'hold' | 'slip'
+export type GamePhase = 'idle' | 'armed' | 'active' | 'recover' | 'rest' | 'hold' | 'slip' | 'win'
 export type HdspMoveState = 'idle' | 'moving' | 'reached'
 export type HspPlayState = 'stopped' | 'playing' | 'paused' | 'starving'
 
@@ -55,8 +55,8 @@ export interface GameState {
   /** Level / interval / checkpoint / lines-lost, interpreted per game.
    *  While `phase` is `'armed'`, this is the hardware ready-tap count instead. */
   level: number
-  /** Primary endurance score, in seconds. */
-  scoreS: number
+  /** Elapsed duration, in seconds. */
+  durationS: number
   /** Whether the deadman button is currently held. */
   holding: boolean
 }

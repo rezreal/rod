@@ -68,13 +68,13 @@ export const GAME_DOCS: GameDoc[] = [
     rules: [
       'Hold the button to climb through intensity checkpoints; each checkpoint you pass is locked in (“banked”).',
       'If you let go or lapse, you only fall back to your last checkpoint instead of all the way to zero — then climb again.',
-      'Goal: reach the highest checkpoint.',
+      'Bank the final checkpoint (100%) and you win — the round ends there.',
     ],
     operate: [
       'Start, then hold to climb. Release falls back to your last banked checkpoint.',
-      'Hold again to keep climbing. Stop to end.',
+      'Hold again to keep climbing. Reach the top to win, or Stop to end early.',
     ],
-    meta: 'Level = highest checkpoint reached.',
+    meta: 'Level = highest checkpoint reached; duration is how long the climb took.',
   },
   {
     kind: 'stillness',
@@ -91,7 +91,7 @@ export const GAME_DOCS: GameDoc[] = [
       'Start, then hold and hold the rod steady at its starting position.',
       'Feel a buzz? You drifted — settle back down. Stop to end.',
     ],
-    meta: 'Level = lives remaining; score is seconds survived.',
+    meta: 'Level = lives remaining; duration is seconds survived.',
   },
 ]
 
