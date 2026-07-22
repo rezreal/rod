@@ -185,13 +185,12 @@ impl RampTask {
             self.min_velocity_mm_s + intensity * (self.max_velocity_mm_s - self.min_velocity_mm_s);
         let velocity = velocity.max(f32::MIN_POSITIVE);
 
-        // Center-anchored zone that widens with intensity.
-        let center = (self.full_zone_min + self.full_zone_max) / 2.0;
+        // Origin-anchored zone: the near end stays pinned at the origin and
+        // depth builds outward from there as intensity climbs.
         let full_span = (self.full_zone_max - self.full_zone_min).abs();
         let span_frac = self.min_span_frac + intensity * (1.0 - self.min_span_frac);
-        let half = (full_span * span_frac) / 2.0;
-        let lo = center - half;
-        let hi = center + half;
+        let lo = self.full_zone_min;
+        let hi = self.full_zone_min + full_span * span_frac;
 
         let target_rel = if out { lo } else { hi };
         let target_mm = target_rel * self.stroke_mm;
