@@ -525,6 +525,18 @@ pub struct Games {
     #[serde(default = "default_game_tick_ms")]
     pub tick_ms: u64,
 
+    // ── Ready gesture (arming) ──
+    /// Hardware hand-switch taps required to arm a game before it starts.
+    #[serde(default = "default_game_ready_taps")]
+    pub ready_taps: u32,
+    /// Max span (ms) from the first tap to the last for them to count as one
+    /// ready gesture; a gap longer than this restarts the tap count at 1.
+    #[serde(default = "default_game_ready_window_ms")]
+    pub ready_window_ms: u64,
+    /// Delay (ms) between the ready gesture completing and motion starting.
+    #[serde(default = "default_game_ready_delay_ms")]
+    pub ready_delay_ms: u64,
+
     // ── Edge & Recover ──
     /// Time to climb from 0 to full intensity while held (s).
     #[serde(default = "default_game_climb_s")]
@@ -593,6 +605,9 @@ impl Default for Games {
             accel_g: default_game_accel_g(),
             deadman_timeout_ms: default_game_deadman_ms(),
             tick_ms: default_game_tick_ms(),
+            ready_taps: default_game_ready_taps(),
+            ready_window_ms: default_game_ready_window_ms(),
+            ready_delay_ms: default_game_ready_delay_ms(),
             edge_climb_s: default_game_climb_s(),
             edge_backoff_rate: default_game_backoff_rate(),
             hold_push_start_pct: default_game_push_start_pct(),
@@ -1162,6 +1177,15 @@ fn default_game_deadman_ms() -> u64 {
 }
 fn default_game_tick_ms() -> u64 {
     100
+}
+fn default_game_ready_taps() -> u32 {
+    3
+}
+fn default_game_ready_window_ms() -> u64 {
+    1200
+}
+fn default_game_ready_delay_ms() -> u64 {
+    700
 }
 fn default_game_climb_s() -> f32 {
     45.0

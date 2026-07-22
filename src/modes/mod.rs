@@ -139,12 +139,19 @@ pub enum CycleControl {
 /// the dispatcher also sends [`GameControl::Stop`] on mode-switch / stop-all.
 #[derive(Debug, Clone, PartialEq)]
 pub enum GameControl {
-    /// Start a game by [`GameKind`](crate::state::GameKind).
+    /// Start a game by [`GameKind`](crate::state::GameKind). Play doesn't
+    /// begin immediately — the task arms and waits for the triple-tap ready
+    /// signal (see [`GameControl::HardwareTap`]).
     Start { kind: crate::state::GameKind },
     /// Button state heartbeat from the client. `down = true` is resent every
     /// ~50 ms while held (deadman); `down = false` (or a heartbeat gap) means
     /// released. Each game interprets hold/release per its own rules.
     Button { down: bool },
+    /// A physical hand-switch press (rising edge only). Only the hardware
+    /// switch sends this — the web/app button cannot — so the "I am ready"
+    /// gesture that arms a game can't be triggered from the phone alone; the
+    /// player must be at the actuator itself. Ignored once play has started.
+    HardwareTap,
     /// Leave the game: stop motion, release servo, return to Idle.
     Stop,
 }

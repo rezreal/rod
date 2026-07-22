@@ -41,6 +41,42 @@ enum Exit {
     Closed,
 }
 
+/// Why the arming stage ([`GameTask::await_ready`]) returned.
+enum ArmResult {
+    /// The ready gesture completed and the start delay elapsed: begin `kind`.
+    Ready(GameKind),
+    /// Client sent Stop (or a different game's ready gesture also aborted
+    /// this way) before the gesture completed.
+    Stop,
+    /// Control channel closed — shut the task down.
+    Closed,
+}
+
+/// Counts hardware taps toward the triple-tap "I am ready" gesture. A tap
+/// more than `window` after the first one restarts the count at 1, so a slow
+/// stray press can't silently accumulate toward an unintended start.
+#[derive(Default)]
+struct ReadyGate {
+    count: u32,
+    first: Option<Instant>,
+}
+
+impl ReadyGate {
+    /// Register a tap; returns `true` once `required` taps have landed
+    /// within `window` of the first tap in the current run.
+    fn tap(&mut self, required: u32, window: Duration) -> bool {
+        let now = Instant::now();
+        match self.first {
+            Some(t) if now.duration_since(t) <= window => self.count += 1,
+            _ => {
+                self.first = Some(now);
+                self.count = 1;
+            }
+        }
+        self.count >= required
+    }
+}
+
 /// Deadman button tracker: `held` plus the instant the heartbeat lapses.
 #[derive(Default)]
 struct Button {
@@ -87,18 +123,29 @@ impl GameTask {
 
     pub async fn run(self, mut ctrl_rx: mpsc::Receiver<GameControl>) {
         info!("games task running");
-        loop {
+        'dispatch: loop {
             match ctrl_rx.recv().await {
                 None => break,
                 Some(GameControl::Start { kind }) => {
                     let mut k = kind;
                     loop {
+                        k = match self.await_ready(k, &mut ctrl_rx).await {
+                            ArmResult::Ready(k) => k,
+                            ArmResult::Stop => continue 'dispatch,
+                            ArmResult::Closed => {
+                                info!("games task stopped");
+                                return;
+                            }
+                        };
                         self.begin(k).await;
                         match self.play(k, &mut ctrl_rx).await {
+                            // Switching games mid-play still requires its own
+                            // ready gesture — arm again rather than jumping
+                            // straight in.
                             Exit::Restart(nk) => k = nk,
                             Exit::Stop => {
                                 self.halt().await;
-                                break;
+                                continue 'dispatch;
                             }
                             Exit::Closed => {
                                 self.halt().await;
@@ -115,6 +162,49 @@ impl GameTask {
         info!("games task stopped");
     }
 
+    /// Arm `kind` and block until the client either signals ready (three
+    /// hardware taps within [`Games::ready_window_ms`], then a
+    /// [`Games::ready_delay_ms`] settle) or aborts (Stop / channel close). A
+    /// fresh `Start` while arming re-arms for the new kind instead of
+    /// stacking gestures.
+    async fn await_ready(&self, kind: GameKind, rx: &mut mpsc::Receiver<GameControl>) -> ArmResult {
+        let mut k = kind;
+        'arm: loop {
+            self.arm(k).await;
+            let mut gate = ReadyGate::default();
+            let mut go_at: Option<Instant> = None;
+
+            loop {
+                tokio::select! {
+                    ctrl = rx.recv() => match ctrl {
+                        None => return ArmResult::Closed,
+                        Some(GameControl::Stop) => {
+                            self.disarm().await;
+                            return ArmResult::Stop;
+                        }
+                        Some(GameControl::Start { kind: nk }) => {
+                            k = nk;
+                            continue 'arm;
+                        }
+                        Some(GameControl::HardwareTap) if go_at.is_none() => {
+                            let ready = gate.tap(
+                                self.g.ready_taps.max(1),
+                                Duration::from_millis(self.g.ready_window_ms),
+                            );
+                            self.publish_armed(gate.count).await;
+                            if ready {
+                                go_at = Some(Instant::now() + Duration::from_millis(self.g.ready_delay_ms));
+                            }
+                        }
+                        // Deadman heartbeats and late taps don't matter before play starts.
+                        Some(_) => {}
+                    },
+                    _ = sleep_until_opt(go_at), if go_at.is_some() => return ArmResult::Ready(k),
+                }
+            }
+        }
+    }
+
     async fn play(&self, kind: GameKind, rx: &mut mpsc::Receiver<GameControl>) -> Exit {
         match kind {
             GameKind::EdgeRecover => self.edge_recover(rx).await,
@@ -127,7 +217,40 @@ impl GameTask {
 
     // ───────────────────────────── shared helpers ─────────────────────────────
 
-    /// Reset runtime and announce the game; servo handling is per-game.
+    /// Enter the Armed phase for `kind`: game mode is set and the runtime is
+    /// visible to the UI, but no motion starts — [`GameRuntime::level`] shows
+    /// the hardware tap count as the ready gesture builds.
+    async fn arm(&self, kind: GameKind) {
+        let mut st = self.state.write().await;
+        st.game = crate::state::GameRuntime {
+            active: true,
+            kind: Some(kind),
+            phase: GamePhase::Armed,
+            intensity: 0.0,
+            level: 0,
+            score_s: 0.0,
+            holding: false,
+        };
+        st.set_mode(AppMode::Game);
+        info!(game = kind.as_str(), "game armed, awaiting ready signal");
+    }
+
+    /// Abort arming (client sent Stop before the gesture completed). No
+    /// motion has started yet, so there's nothing to halt beyond the runtime.
+    async fn disarm(&self) {
+        let mut st = self.state.write().await;
+        st.game.active = false;
+        st.game.phase = GamePhase::Idle;
+        st.set_mode(AppMode::Idle);
+    }
+
+    /// Update the tap count shown to the UI while arming.
+    async fn publish_armed(&self, taps: u32) {
+        self.state.write().await.game.level = taps;
+    }
+
+    /// Reset runtime and announce the game; servo handling is per-game. Only
+    /// reached after the ready gesture (see [`GameTask::await_ready`]).
     async fn begin(&self, kind: GameKind) {
         let mut st = self.state.write().await;
         st.game = crate::state::GameRuntime {
@@ -238,6 +361,8 @@ impl GameTask {
                     Some(GameControl::Stop) => return Exit::Stop,
                     Some(GameControl::Start { kind }) => return Exit::Restart(kind),
                     Some(GameControl::Button { down }) => btn.apply(down, self.deadman),
+                    // The ready gesture already happened; ignore late taps.
+                    Some(GameControl::HardwareTap) => {}
                 },
                 _ = sleep_until_opt(btn.deadline), if btn.deadline.is_some() => btn.expire(),
                 _ = sleep_until_opt(next), if next.is_some() => {
@@ -284,6 +409,8 @@ impl GameTask {
                     Some(GameControl::Stop) => return Exit::Stop,
                     Some(GameControl::Start { kind }) => return Exit::Restart(kind),
                     Some(GameControl::Button { down }) => btn.apply(down, self.deadman),
+                    // The ready gesture already happened; ignore late taps.
+                    Some(GameControl::HardwareTap) => {}
                 },
                 _ = sleep_until_opt(btn.deadline), if btn.deadline.is_some() => {
                     btn.expire();
@@ -346,6 +473,8 @@ impl GameTask {
                     Some(GameControl::Stop) => return Exit::Stop,
                     Some(GameControl::Start { kind }) => return Exit::Restart(kind),
                     Some(GameControl::Button { down }) => btn.apply(down, self.deadman),
+                    // The ready gesture already happened; ignore late taps.
+                    Some(GameControl::HardwareTap) => {}
                 },
                 _ = sleep_until_opt(btn.deadline), if btn.deadline.is_some() => btn.expire(),
                 _ = sleep_until_opt(next), if next.is_some() && working => {
@@ -414,6 +543,8 @@ impl GameTask {
                     Some(GameControl::Stop) => return Exit::Stop,
                     Some(GameControl::Start { kind }) => return Exit::Restart(kind),
                     Some(GameControl::Button { down }) => btn.apply(down, self.deadman),
+                    // The ready gesture already happened; ignore late taps.
+                    Some(GameControl::HardwareTap) => {}
                 },
                 _ = sleep_until_opt(btn.deadline), if btn.deadline.is_some() => btn.expire(),
                 _ = sleep_until_opt(next), if next.is_some() => {
@@ -465,6 +596,8 @@ impl GameTask {
                     Some(GameControl::Stop) => return Exit::Stop,
                     Some(GameControl::Start { kind }) => return Exit::Restart(kind),
                     Some(GameControl::Button { down }) => btn.apply(down, self.deadman),
+                    // The ready gesture already happened; ignore late taps.
+                    Some(GameControl::HardwareTap) => {}
                 },
                 _ = sleep_until_opt(btn.deadline), if btn.deadline.is_some() => btn.expire(),
                 _ = tick.tick() => {
@@ -543,6 +676,9 @@ mod tests {
             [actuator.games]
             tick_ms = 100
             deadman_timeout_ms = 150
+            ready_taps = 3
+            ready_window_ms = 1000
+            ready_delay_ms = 10
             edge_climb_s = 1.0
             gauntlet_rest_s = 2.0
             gauntlet_work_s = 1.0
@@ -580,6 +716,51 @@ mod tests {
         while cmd_rx.try_recv().is_ok() {}
     }
 
+    /// Send the hardware triple-tap ready gesture and let the post-tap start
+    /// delay elapse, carrying the task from Armed into actual play.
+    async fn ready(ctrl: &mpsc::Sender<GameControl>, cmd_rx: &mut mpsc::Receiver<ActuatorCommand>) {
+        for _ in 0..3 {
+            ctrl.send(GameControl::HardwareTap).await.unwrap();
+            tokio::task::yield_now().await;
+        }
+        beat(ctrl, cmd_rx, false).await;
+    }
+
+    #[tokio::test(start_paused = true)]
+    async fn arming_requires_three_taps_before_play_starts() {
+        let (state, ctrl, mut cmd_rx, h) = spawn();
+        ctrl.send(GameControl::Start {
+            kind: GameKind::EdgeRecover,
+        })
+        .await
+        .unwrap();
+        tokio::task::yield_now().await;
+        assert_eq!(state.read().await.game.phase, GamePhase::Armed);
+
+        // Two taps: still armed, not yet playing.
+        ctrl.send(GameControl::HardwareTap).await.unwrap();
+        tokio::task::yield_now().await;
+        ctrl.send(GameControl::HardwareTap).await.unwrap();
+        tokio::task::yield_now().await;
+        assert_eq!(state.read().await.game.phase, GamePhase::Armed);
+        assert_eq!(state.read().await.game.level, 2, "tap count so far");
+
+        // Web/app Button heartbeats don't count as taps — still armed.
+        ctrl.send(GameControl::Button { down: true }).await.unwrap();
+        tokio::task::yield_now().await;
+        assert_eq!(state.read().await.game.phase, GamePhase::Armed);
+        assert_eq!(state.read().await.game.level, 2);
+
+        // Third tap completes the gesture; play starts after the delay.
+        ready(&ctrl, &mut cmd_rx).await;
+        assert_ne!(state.read().await.game.phase, GamePhase::Armed);
+        assert!(state.read().await.game.active);
+
+        ctrl.send(GameControl::Stop).await.unwrap();
+        drop(ctrl);
+        let _ = h.await;
+    }
+
     #[tokio::test(start_paused = true)]
     async fn edge_recover_climbs_while_held() {
         let (state, ctrl, mut cmd_rx, h) = spawn();
@@ -588,6 +769,7 @@ mod tests {
         })
         .await
         .unwrap();
+        ready(&ctrl, &mut cmd_rx).await;
 
         // Hold the button across ~10 heartbeats (climb_s = 1.0).
         for _ in 0..10 {
@@ -611,6 +793,7 @@ mod tests {
         })
         .await
         .unwrap();
+        ready(&ctrl, &mut cmd_rx).await;
 
         // Settle into the rest phase (no button held).
         for _ in 0..2 {

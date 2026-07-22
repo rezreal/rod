@@ -137,8 +137,13 @@ export function GamesManual({ only }: { only?: GameKind }) {
       {!only && (
         <div className="flex flex-col gap-1.5 rounded-xl bg-slate-800/60 border border-slate-700/60 p-3">
           <p className="text-xs text-slate-300">
-            The button is a <span className="font-semibold text-fuchsia-300">deadman</span> — the game only
-            runs while you hold it; let go and motion stops. Hit <span className="font-semibold">Stop</span> to
+            Starting a game arms it, but motion doesn't begin right away — tap the physical
+            button on the device three times to confirm you're ready, then it starts after a
+            short delay. This gesture only works on the device itself, not from the app.
+          </p>
+          <p className="text-xs text-slate-300">
+            Once running, the button is a <span className="font-semibold text-fuchsia-300">deadman</span> — the
+            game only runs while you hold it; let go and motion stops. Hit <span className="font-semibold">Stop</span> to
             leave the game.
           </p>
           <p className="text-[11px] text-amber-400/80">

@@ -9,6 +9,11 @@ import { GAME_DOCS, GamesManual } from './GamesManual'
 // bridge's 150 ms deadman window so the game never lapses mid-hold.
 const BUTTON_INTERVAL_MS = 50
 
+// Hardware taps required to arm a game, mirroring the bridge's default
+// `ready_taps` (src/config.rs). Only the physical hand switch counts — this
+// screen can't fake the gesture, which is the point.
+const READY_TAPS = 3
+
 const GAME_NAMES: Record<GameKind, string> = {
   edge_recover:  'Edge & Recover',
   hold_the_line: 'Hold the Line',
@@ -28,6 +33,7 @@ const LEVEL_LABELS: Record<GameKind, string> = {
 
 const PHASE_STYLES: Record<GamePhase, string> = {
   idle:    'bg-slate-700 text-slate-400',
+  armed:   'bg-amber-500/20 text-amber-300 border border-amber-500/30',
   active:  'bg-fuchsia-500/20 text-fuchsia-300 border border-fuchsia-500/30',
   recover: 'bg-cyan-500/20 text-cyan-300 border border-cyan-500/30',
   rest:    'bg-slate-600/40 text-slate-300 border border-slate-600/50',
@@ -37,6 +43,7 @@ const PHASE_STYLES: Record<GamePhase, string> = {
 
 const PHASE_LABELS: Record<GamePhase, string> = {
   idle:    'Idle',
+  armed:   'Armed',
   active:  'Active',
   recover: 'Recover',
   rest:    'Rest',
@@ -109,8 +116,11 @@ export function GamesControls() {
   }
 
   const phase = game?.phase ?? 'idle'
+  const isArmed = isActive && phase === 'armed'
   const intensity = Math.min(1, Math.max(0, game?.intensity ?? 0))
+  // While armed, `level` is repurposed as the hardware ready-tap count.
   const level = Math.round(game?.level ?? 0)
+  const readyTaps = isArmed ? Math.min(level, READY_TAPS) : 0
   const score = game?.scoreS ?? 0
   const holding = game?.holding ?? false
   const activeKind = game?.kind ?? selected
@@ -129,9 +139,11 @@ export function GamesControls() {
           }`}
         />
         <span className="text-xs text-slate-400">
-          {isActive
-            ? holding ? `Playing ${GAME_NAMES[activeKind]}` : 'Game ready — hold to play'
-            : 'No game running'}
+          {isArmed
+            ? `Tap the device button ${READY_TAPS}× to start`
+            : isActive
+              ? holding ? `Playing ${GAME_NAMES[activeKind]}` : 'Game ready — hold to play'
+              : 'No game running'}
         </span>
       </div>
 
@@ -211,8 +223,35 @@ export function GamesControls() {
         )}
       </button>
 
-      {/* Deadman hold button — only while a game is active */}
-      {isActive && (
+      {/* Armed — waiting for the physical hand-switch ready gesture. The
+          on-screen button can't fake this; it must happen on the device. */}
+      {isArmed && (
+        <div className="flex flex-col items-center gap-3 rounded-2xl bg-slate-800/60 border border-amber-500/30 p-5">
+          <svg viewBox="0 0 24 24" className="w-7 h-7 text-amber-400 animate-pulse" fill="none" stroke="currentColor" strokeWidth={2}>
+            <circle cx="12" cy="12" r="9" />
+            <circle cx="12" cy="12" r="3" fill="currentColor" stroke="none" />
+          </svg>
+          <p className="text-sm text-amber-300 text-center font-semibold">
+            Tap the button on the device {READY_TAPS} times
+          </p>
+          <p className="text-xs text-slate-500 text-center">
+            This confirms you're at the actuator and ready — the app can't do it for you.
+          </p>
+          <div className="flex items-center gap-2">
+            {Array.from({ length: READY_TAPS }, (_, i) => (
+              <span
+                key={i}
+                className={`w-3 h-3 rounded-full transition-colors ${
+                  i < readyTaps ? 'bg-amber-400' : 'bg-slate-700'
+                }`}
+              />
+            ))}
+          </div>
+        </div>
+      )}
+
+      {/* Deadman hold button — only once the game is actually playing */}
+      {isActive && !isArmed && (
         <div className="flex flex-col gap-3">
           <p className="text-xs text-slate-500 text-center">
             Hold to play · release to stop motion
@@ -246,8 +285,8 @@ export function GamesControls() {
         </div>
       )}
 
-      {/* Live status panel */}
-      {isActive && (
+      {/* Live status panel — once actually playing */}
+      {isActive && !isArmed && (
         <div className="flex flex-col gap-4 rounded-2xl bg-slate-800/60 border border-slate-700/60 p-4">
           {/* Phase + holding */}
           <div className="flex items-center justify-between">

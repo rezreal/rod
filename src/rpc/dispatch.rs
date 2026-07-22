@@ -589,7 +589,8 @@ impl Dispatcher {
 
     /// Route a hardware hand-switch edge to the active program, mirroring that
     /// program's on-screen button (see `src/modes/handswitch.rs`). Both inputs
-    /// feed the same control channels, so they're interchangeable.
+    /// feed the same control channels, so they're interchangeable — except the
+    /// games' ready gesture, which is hardware-only (see [`GameControl::HardwareTap`]).
     pub async fn hand_switch(&self, edge: HandEdge) {
         let mode = self.state.read().await.mode;
         match mode {
@@ -606,9 +607,19 @@ impl Dispatcher {
                         .await;
                 }
             }
-            // Deadman heartbeat: held = down, released = up.
+            // Deadman heartbeat: held = down, released = up. A fresh press
+            // also counts as a hardware tap toward the triple-tap ready
+            // gesture (ignored by the game task once play has started).
             AppMode::Game => match edge {
-                HandEdge::Press | HandEdge::Hold => {
+                HandEdge::Press => {
+                    let _ = self.modes.game.send(GameControl::HardwareTap).await;
+                    let _ = self
+                        .modes
+                        .game
+                        .send(GameControl::Button { down: true })
+                        .await;
+                }
+                HandEdge::Hold => {
                     let _ = self
                         .modes
                         .game

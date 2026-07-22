@@ -4,7 +4,9 @@
 //! [`AppState::hand_switch`](crate::state::AppState) by the Modbus status poll.
 //! This task watches that bit for press/release edges and drives whichever
 //! program is currently active exactly as that program's on-screen button would
-//! — so the physical switch and the web button are interchangeable.
+//! — so the physical switch and the web button are interchangeable, with one
+//! exception: a game's triple-tap ready gesture only accepts hardware presses
+//! (see [`crate::modes::GameControl::HardwareTap`]).
 //!
 //! The per-mode routing lives in [`Dispatcher::hand_switch`] so it can reach
 //! every mode's control channel (and the dispatcher's own start/stop paths).

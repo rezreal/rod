@@ -164,6 +164,9 @@ impl GameKind {
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 pub enum GamePhase {
     Idle,
+    /// Waiting for the hardware ready signal (triple-tap the hand switch)
+    /// before motion starts. `GameRuntime::level` counts taps so far.
+    Armed,
     /// Actively building / working / climbing.
     Active,
     /// Backing off after an edge (Edge & Recover) or between climbs.
@@ -180,6 +183,7 @@ impl GamePhase {
     pub fn as_str(self) -> &'static str {
         match self {
             GamePhase::Idle => "idle",
+            GamePhase::Armed => "armed",
             GamePhase::Active => "active",
             GamePhase::Recover => "recover",
             GamePhase::Rest => "rest",
