@@ -1,0 +1,10 @@
+[tools]
+"github:docker/buildx" = { version = "0.35.0", exe = "docker-buildx" }
+
+[tasks.clean]
+description = "Remove untracked build & dependency artifacts (gitignored files only)"
+# -d recurse into dirs, -f force, -X remove ONLY gitignored files (target/,
+# web/node_modules/, web/dist/, device-uid, buildroot*, ...). Capital -X (not
+# -x) leaves other untracked files — e.g. .claude/, new source — in place, and
+# nested git repos under .claude/worktrees/ are skipped.
+run = "git clean -dfX"

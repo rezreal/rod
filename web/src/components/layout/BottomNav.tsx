@@ -1,0 +1,197 @@
+import { useDeviceState } from '../../hooks/useDeviceState'
+
+interface Props {
+  onSettings: () => void
+}
+
+export function BottomNav({ onSettings }: Props) {
+  const { activeProgram, setActiveProgram } = useDeviceState()
+
+  const items: { id: 'hamp' | 'hdsp' | 'hsp' | 'drill' | 'ramp' | 'game' | 'cycle' | 'learn' | 'pulse' | 'impale' | 'plumb' | 'surge' | 'tide' | 'echo' | 'trace' | 'tempo'; label: string; icon: React.ReactNode }[] = [
+    {
+      id: 'hamp',
+      label: 'Oscillate',
+      icon: (
+        <svg viewBox="0 0 24 24" className="w-5 h-5" fill="none" stroke="currentColor" strokeWidth={2}>
+          <path strokeLinecap="round" strokeLinejoin="round" d="M3 12c2-4 4-4 6 0s4 4 6 0 4-4 6 0" />
+        </svg>
+      ),
+    },
+    {
+      id: 'hdsp',
+      label: 'Manual',
+      icon: (
+        <svg viewBox="0 0 24 24" className="w-5 h-5" fill="none" stroke="currentColor" strokeWidth={2}>
+          <circle cx="12" cy="12" r="3" />
+          <line x1="12" y1="2" x2="12" y2="6" />
+          <line x1="12" y1="18" x2="12" y2="22" />
+        </svg>
+      ),
+    },
+    {
+      id: 'hsp',
+      label: 'Script',
+      icon: (
+        <svg viewBox="0 0 24 24" className="w-5 h-5" fill="none" stroke="currentColor" strokeWidth={2}>
+          <polygon points="5 3 19 12 5 21 5 3" />
+        </svg>
+      ),
+    },
+    {
+      id: 'drill',
+      label: 'Drill',
+      icon: (
+        <svg viewBox="0 0 24 24" className="w-5 h-5" fill="none" stroke="currentColor" strokeWidth={2}>
+          <line x1="12" y1="2" x2="12" y2="16" strokeLinecap="round" />
+          <polyline points="7 11 12 16 17 11" strokeLinecap="round" strokeLinejoin="round" />
+          <line x1="7" y1="20" x2="17" y2="20" strokeLinecap="round" />
+        </svg>
+      ),
+    },
+    {
+      id: 'ramp',
+      label: 'Ramp',
+      icon: (
+        <svg viewBox="0 0 24 24" className="w-5 h-5" fill="none" stroke="currentColor" strokeWidth={2}>
+          <polyline points="3 18 9 12 13 15 21 6" strokeLinecap="round" strokeLinejoin="round" />
+          <polyline points="15 6 21 6 21 12" strokeLinecap="round" strokeLinejoin="round" />
+        </svg>
+      ),
+    },
+    {
+      id: 'game',
+      label: 'Games',
+      icon: (
+        <svg viewBox="0 0 24 24" className="w-5 h-5" fill="none" stroke="currentColor" strokeWidth={2}>
+          <path strokeLinecap="round" strokeLinejoin="round" d="M8 21h8M12 17v4M7 4h10v4a5 5 0 0 1-10 0V4z" />
+          <path strokeLinecap="round" strokeLinejoin="round" d="M17 5h3v2a3 3 0 0 1-3 3M7 5H4v2a3 3 0 0 0 3 3" />
+        </svg>
+      ),
+    },
+    {
+      id: 'cycle',
+      label: 'Cycle',
+      icon: (
+        <svg viewBox="0 0 24 24" className="w-5 h-5" fill="none" stroke="currentColor" strokeWidth={2}>
+          <path strokeLinecap="round" strokeLinejoin="round" d="M4 12a8 8 0 0 1 13.7-5.6L20 8" />
+          <path strokeLinecap="round" strokeLinejoin="round" d="M20 4v4h-4" />
+          <path strokeLinecap="round" strokeLinejoin="round" d="M20 12a8 8 0 0 1-13.7 5.6L4 16" />
+          <path strokeLinecap="round" strokeLinejoin="round" d="M4 20v-4h4" />
+        </svg>
+      ),
+    },
+    {
+      id: 'learn',
+      label: 'Learn',
+      icon: (
+        <svg viewBox="0 0 24 24" className="w-5 h-5" fill="none" stroke="currentColor" strokeWidth={2}>
+          <path strokeLinecap="round" strokeLinejoin="round" d="M12 4 2 9l10 5 10-5-10-5z" />
+          <path strokeLinecap="round" strokeLinejoin="round" d="M6 11v5c0 1 2.7 2.5 6 2.5s6-1.5 6-2.5v-5" />
+        </svg>
+      ),
+    },
+    {
+      id: 'pulse',
+      label: 'Pulse',
+      icon: (
+        <svg viewBox="0 0 24 24" className="w-5 h-5" fill="none" stroke="currentColor" strokeWidth={2}>
+          <path strokeLinecap="round" strokeLinejoin="round" d="M3 12h4l2 6 4-14 2 8h6" />
+        </svg>
+      ),
+    },
+    {
+      id: 'impale',
+      label: 'Impale',
+      icon: (
+        <svg viewBox="0 0 24 24" className="w-5 h-5" fill="none" stroke="currentColor" strokeWidth={2}>
+          <line x1="12" y1="2" x2="12" y2="18" strokeLinecap="round" />
+          <polyline points="8 14 12 18 16 14" strokeLinecap="round" strokeLinejoin="round" />
+          <line x1="5" y1="22" x2="19" y2="22" strokeLinecap="round" />
+        </svg>
+      ),
+    },
+    {
+      id: 'plumb',
+      label: 'Plumb',
+      icon: (
+        <svg viewBox="0 0 24 24" className="w-5 h-5" fill="none" stroke="currentColor" strokeWidth={2}>
+          <path strokeLinecap="round" strokeLinejoin="round" d="M12 3v18M8 7l4-4 4 4M8 17l4 4 4-4" />
+        </svg>
+      ),
+    },
+    {
+      id: 'surge',
+      label: 'Surge',
+      icon: (
+        <svg viewBox="0 0 24 24" className="w-5 h-5" fill="none" stroke="currentColor" strokeWidth={2}>
+          <path strokeLinecap="round" strokeLinejoin="round" d="M12 2c1.5 3-1.5 4.5-1.5 7A2.5 2.5 0 0 0 13 11.5c.5 1.5 2 2 2 4a3.5 3.5 0 1 1-7 0c0-3.5 4-5 4-13.5z" />
+        </svg>
+      ),
+    },
+    {
+      id: 'tide',
+      label: 'Tide',
+      icon: (
+        <svg viewBox="0 0 24 24" className="w-5 h-5" fill="none" stroke="currentColor" strokeWidth={2}>
+          <path strokeLinecap="round" strokeLinejoin="round" d="M3 8c2-3 4-3 6 0s4 3 6 0 4-3 6 0M3 16c2-3 4-3 6 0s4 3 6 0 4-3 6 0" />
+        </svg>
+      ),
+    },
+    {
+      id: 'echo',
+      label: 'Echo',
+      icon: (
+        <svg viewBox="0 0 24 24" className="w-5 h-5" fill="none" stroke="currentColor" strokeWidth={2}>
+          <path strokeLinecap="round" strokeLinejoin="round" d="M12 6v12M8 9l-3 3 3 3M16 9l3 3-3 3" />
+        </svg>
+      ),
+    },
+    {
+      id: 'trace',
+      label: 'Trace',
+      icon: (
+        <svg viewBox="0 0 24 24" className="w-5 h-5" fill="none" stroke="currentColor" strokeWidth={2}>
+          <path strokeLinecap="round" strokeLinejoin="round" d="M4 5h16M12 9v9M9 15l3 3 3-3" />
+        </svg>
+      ),
+    },
+    {
+      id: 'tempo',
+      label: 'Tempo',
+      icon: (
+        <svg viewBox="0 0 24 24" className="w-5 h-5" fill="none" stroke="currentColor" strokeWidth={2}>
+          <path strokeLinecap="round" strokeLinejoin="round" d="M9 3h6l3 18H6L9 3zM12 3v8M9.5 13h5" />
+        </svg>
+      ),
+    },
+  ]
+
+  return (
+    <nav className="md:hidden flex items-center justify-around bg-slate-900 border-t border-slate-800 shrink-0 pb-safe">
+      {items.map((item) => {
+        const active = activeProgram === item.id
+        return (
+          <button
+            key={item.id}
+            onClick={() => setActiveProgram(item.id)}
+            className={`flex flex-col items-center gap-1 px-4 py-3 min-w-[64px] transition-colors
+              ${active ? 'text-cyan-400' : 'text-slate-500 hover:text-slate-300'}`}
+          >
+            {item.icon}
+            <span className="text-[10px] font-medium">{item.label}</span>
+          </button>
+        )
+      })}
+      <button
+        onClick={onSettings}
+        className="flex flex-col items-center gap-1 px-4 py-3 min-w-[64px] text-slate-500 hover:text-slate-300 transition-colors"
+      >
+        <svg viewBox="0 0 24 24" className="w-5 h-5" fill="none" stroke="currentColor" strokeWidth={2}>
+          <circle cx="12" cy="12" r="3" />
+          <path d="M19.4 15a1.65 1.65 0 0 0 .33 1.82l.06.06a2 2 0 0 1-2.83 2.83l-.06-.06a1.65 1.65 0 0 0-1.82-.33 1.65 1.65 0 0 0-1 1.51V21a2 2 0 0 1-4 0v-.09A1.65 1.65 0 0 0 9 19.4a1.65 1.65 0 0 0-1.82.33l-.06.06a2 2 0 0 1-2.83-2.83l.06-.06A1.65 1.65 0 0 0 4.68 15a1.65 1.65 0 0 0-1.51-1H3a2 2 0 0 1 0-4h.09A1.65 1.65 0 0 0 4.6 9a1.65 1.65 0 0 0-.33-1.82l-.06-.06a2 2 0 0 1 2.83-2.83l.06.06A1.65 1.65 0 0 0 9 4.68a1.65 1.65 0 0 0 1-1.51V3a2 2 0 0 1 4 0v.09a1.65 1.65 0 0 0 1 1.51 1.65 1.65 0 0 0 1.82-.33l.06-.06a2 2 0 0 1 2.83 2.83l-.06.06A1.65 1.65 0 0 0 19.4 9a1.65 1.65 0 0 0 1.51 1H21a2 2 0 0 1 0 4h-.09a1.65 1.65 0 0 0-1.51 1z" />
+        </svg>
+        <span className="text-[10px] font-medium">Settings</span>
+      </button>
+    </nav>
+  )
+}

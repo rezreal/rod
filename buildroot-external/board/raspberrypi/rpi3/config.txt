@@ -1,0 +1,17 @@
+# Raspberry Pi 3 (BCM2837) — 64-bit boot
+arm_64bit=1
+kernel=Image
+
+# BCM43438 BT chip is hardwired to UART0 (PL011, /dev/ttyAMA0) by default.
+# Do NOT add miniuart-bt overlay here — that would move BT to the mini-UART
+# (clock-unstable) and break btattach.
+
+# No serial console needed (headless appliance).
+# enable_uart=1 would enable the GPIO UART pins for console access if needed.
+
+disable_splash=1
+boot_delay=0
+
+# Disable unused subsystems to reduce boot time
+dtoverlay=disable-wifi
+gpu_mem=16

@@ -1,0 +1,91 @@
+name: buildroot-images
+
+# Builds SD card images for RPi 3/4/5 using Buildroot.
+# On a version tag (`v*`) the .img.gz files are attached to the GitHub Release
+# alongside the bare binary produced by build.yml.
+#
+# Uses ubuntu-latest (x86_64) — Buildroot's internal cross-toolchain runs on
+# x86_64 hosts and cross-compiles for aarch64.
+#
+# Cache strategy:
+#   buildroot-dl/  — downloaded source tarballs (~500 MB, rarely changes)
+#   buildroot-ccache/<board>/ — compiler cache (~200 MB, speeds up rebuilds)
+# Cold build: ~60-90 min. Warm build (dl + ccache hit): ~20-30 min.
+
+on:
+  push:
+    tags: ["v*"]
+  workflow_dispatch:
+
+jobs:
+  build:
+    runs-on: ubuntu-latest
+    strategy:
+      fail-fast: false
+      matrix:
+        board: [rpi3_64, rpi4_64, rpi5_64]
+
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Install Buildroot host dependencies
+        run: |
+          sudo apt-get update -qq
+          sudo apt-get install -y \
+            build-essential gcc g++ make libncurses5-dev \
+            git rsync bc patch gzip bzip2 xz-utils \
+            libssl-dev unzip wget cpio \
+            file device-mapper
+
+      - name: Cache Buildroot downloads
+        uses: actions/cache@v4
+        with:
+          path: buildroot-dl
+          key: buildroot-dl-${{ hashFiles('buildroot-external/configs/**', 'buildroot-external/package/**') }}
+          restore-keys: buildroot-dl-
+
+      - name: Cache ccache (${{ matrix.board }})
+        uses: actions/cache@v4
+        with:
+          path: buildroot-ccache/${{ matrix.board }}
+          key: buildroot-ccache-${{ matrix.board }}-${{ github.sha }}
+          restore-keys: buildroot-ccache-${{ matrix.board }}-
+
+      - name: Download Buildroot 2024.02 LTS
+        run: |
+          mkdir -p buildroot
+          curl -L https://buildroot.org/downloads/buildroot-2024.02.tar.gz \
+            | tar xz --strip-components=1 -C buildroot
+
+      - name: Configure (${{ matrix.board }})
+        run: |
+          mkdir -p buildroot/output/${{ matrix.board }}
+          make -C buildroot \
+            O=$(pwd)/buildroot/output/${{ matrix.board }} \
+            BR2_EXTERNAL=$(pwd)/buildroot-external \
+            BR2_DL_DIR=$(pwd)/buildroot-dl \
+            BR2_CCACHE_DIR=$(pwd)/buildroot-ccache/${{ matrix.board }} \
+            rod_${{ matrix.board }}_defconfig
+
+      - name: Build (${{ matrix.board }})
+        run: make -C buildroot/output/${{ matrix.board }}
+        timeout-minutes: 120
+
+      - name: Compress image
+        run: |
+          gzip -k buildroot/output/${{ matrix.board }}/images/sdcard.img
+          mv buildroot/output/${{ matrix.board }}/images/sdcard.img.gz \
+             rod-${{ matrix.board }}-${{ github.ref_name }}.img.gz
+
+      - name: Upload artifact
+        uses: actions/upload-artifact@v4
+        with:
+          name: rod-${{ matrix.board }}-${{ github.ref_name }}
+          path: rod-${{ matrix.board }}-${{ github.ref_name }}.img.gz
+
+      - name: Attach to release
+        if: startsWith(github.ref, 'refs/tags/v')
+        uses: softprops/action-gh-release@v2
+        with:
+          files: rod-${{ matrix.board }}-${{ github.ref_name }}.img.gz
+          fail_on_unmatched_files: true

@@ -1,0 +1,80 @@
+# rod image for Raspberry Pi 4 (BCM2711, Cortex-A72, 64-bit)
+
+# Architecture
+BR2_aarch64=y
+BR2_cortex_a72=y
+
+# Toolchain: internal glibc
+BR2_TOOLCHAIN_BUILDROOT_GLIBC=y
+BR2_TOOLCHAIN_BUILDROOT_CXX=y
+
+# Linux kernel: RPi downstream, bcm2711 config
+BR2_LINUX_KERNEL=y
+BR2_LINUX_KERNEL_CUSTOM_GIT=y
+BR2_LINUX_KERNEL_CUSTOM_REPO_URL="https://github.com/raspberrypi/linux"
+BR2_LINUX_KERNEL_CUSTOM_REPO_VERSION="rpi-6.6.y"
+BR2_LINUX_KERNEL_DEFCONFIG="bcm2711"
+BR2_LINUX_KERNEL_IMAGE_TARGET_CUSTOM=y
+BR2_LINUX_KERNEL_IMAGE_TARGET_NAME="Image"
+BR2_LINUX_KERNEL_NEEDS_HOST_OPENSSL=y
+BR2_LINUX_KERNEL_DTS_SUPPORT=y
+BR2_LINUX_KERNEL_INTREE_DTS_NAME="broadcom/bcm2711-rpi-4-b broadcom/bcm2711-rpi-400 broadcom/bcm2711-rpi-cm4"
+BR2_LINUX_KERNEL_CONFIG_FRAGMENT_FILES="$(BR2_EXTERNAL_ROD_PATH)/board/raspberrypi/common/linux-extras.config"
+
+# RPi boot firmware (start4.elf / fixup4.dat for RPi 4)
+BR2_PACKAGE_RPI_FIRMWARE=y
+BR2_PACKAGE_RPI_FIRMWARE_VARIANT_PI4=y
+BR2_PACKAGE_RPI_FIRMWARE_CUSTOM_CONFIG_FILE="$(BR2_EXTERNAL_ROD_PATH)/board/raspberrypi/rpi4/config.txt"
+
+# Broadcom BCM Bluetooth HCD firmware (BCM4345C0.hcd for RPi 4)
+BR2_PACKAGE_RPI_BT_FIRMWARE=y
+
+# Init: systemd
+BR2_INIT_SYSTEMD=y
+BR2_PACKAGE_SYSTEMD=y
+BR2_PACKAGE_SYSTEMD_JOURNAL=y
+
+# Core utilities
+BR2_PACKAGE_BUSYBOX=y
+
+# Networking: DHCP on eth0
+BR2_PACKAGE_DHCPCD=y
+BR2_PACKAGE_IFUPDOWN_SCRIPTS=y
+
+# D-Bus — required by BlueZ and the bluer Rust crate
+BR2_PACKAGE_DBUS=y
+
+# BlueZ 5 — bluetoothd + btattach + bluetoothctl
+BR2_PACKAGE_BLUEZ5_UTILS=y
+BR2_PACKAGE_BLUEZ5_UTILS_CLIENT=y
+
+# Avahi - mDNS so the device is reachable as rod.local
+BR2_PACKAGE_AVAHI=y
+BR2_PACKAGE_AVAHI_DAEMON=y
+
+# rfkill — used in rod.service ExecStartPre
+BR2_PACKAGE_UTIL_LINUX=y
+BR2_PACKAGE_UTIL_LINUX_RFKILL=y
+
+# Host Rust toolchain for cross-compiling rod
+BR2_PACKAGE_HOST_RUSTC=y
+
+# Image generation
+BR2_PACKAGE_HOST_GENIMAGE=y
+
+# rod application
+BR2_PACKAGE_ROD=y
+
+# Compiler cache
+BR2_CCACHE=y
+
+# Root filesystem image: ext4, 256 MB
+BR2_TARGET_ROOTFS_EXT2=y
+BR2_TARGET_ROOTFS_EXT2_4=y
+BR2_TARGET_ROOTFS_EXT2_SIZE="256M"
+
+# Rootfs overlay + post-build/post-image scripts
+BR2_ROOTFS_OVERLAY="$(BR2_EXTERNAL_ROD_PATH)/board/raspberrypi/common/rootfs-overlay"
+BR2_ROOTFS_POST_BUILD_SCRIPT="$(BR2_EXTERNAL_ROD_PATH)/board/raspberrypi/common/post-build.sh"
+BR2_ROOTFS_POST_IMAGE_SCRIPT="$(BR2_EXTERNAL_ROD_PATH)/board/raspberrypi/common/post-image.sh"
+BR2_ROOTFS_POST_SCRIPT_ARGS="rpi4"

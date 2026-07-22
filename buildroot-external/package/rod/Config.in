@@ -1,0 +1,12 @@
+config BR2_PACKAGE_ROD
+	bool "rod"
+	depends on BR2_PACKAGE_HOST_RUSTC
+	select BR2_PACKAGE_DBUS
+	select BR2_PACKAGE_BLUEZ5_UTILS
+	help
+	  BLE peripheral bridge for IAI linear actuators.
+	  Exposes a Handy FW4-compatible GATT service over the onboard
+	  Bluetooth radio and drives the actuator via Modbus RTU over USB
+	  serial.
+
+	  https://github.com/your-org/rod

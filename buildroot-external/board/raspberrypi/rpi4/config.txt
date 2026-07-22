@@ -1,0 +1,11 @@
+# Raspberry Pi 4 (BCM2711) — 64-bit boot
+arm_64bit=1
+kernel=Image
+
+# BCM4345 BT chip has a dedicated UART on RPi 4 — no UART conflict.
+
+disable_splash=1
+boot_delay=0
+
+dtoverlay=disable-wifi
+gpu_mem=16

@@ -1,0 +1,11 @@
+/target
+/device-uid
+/.idea
+
+# Buildroot tree (fetched by scripts/setup-buildroot.sh, not committed)
+/buildroot
+/buildroot-dl
+/buildroot-ccache
+
+# Cargo.lock IS committed: this is a deployable binary, so builds should be
+# reproducible across the Pi / CI.

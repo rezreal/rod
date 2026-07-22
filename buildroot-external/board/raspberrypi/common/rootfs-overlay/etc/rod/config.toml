@@ -1,0 +1,50 @@
+# rod configuration — Buildroot image default.
+# Edit this file on the SD card (boot partition is FAT, root is ext4).
+# See SPEC.md §5 for full documentation.
+
+[actuator]
+serial_device  = "/dev/ttyUSB0"
+baud_rate      = 19200
+modbus_slave   = 1
+variant        = "8inch"
+home_direction = "negative"
+
+[actuator.limits]
+min_position_mm   = 0.0
+max_position_mm   = 200.0
+max_velocity_mm_s = 400.0
+default_accel_g   = 0.3
+default_motion_profile = "trapezoid"
+
+[actuator.calibration]
+touch_velocity_mm_s = 2.0
+push_current_pct    = 10
+touch_accel_g       = 0.1
+max_travel_mm       = 0.0
+
+[actuator.peck_probe]
+coarse_step_mm          = 5.0
+fine_step_mm            = 1.0
+fine_back_mm            = 8.0
+move_velocity_mm_s      = 20.0
+release_ms              = 80
+springback_threshold_mm = 0.3
+max_travel_mm           = 0.0
+return_velocity_mm_s    = 10.0
+
+[transports]
+enable_ble   = true
+enable_cloud = false
+
+[ble]
+hw_model = 3
+uid      = "a1b2c3d4e5f6"
+adapter  = "hci0"
+
+[cloud]
+server_env = "production"
+custom_url = ""
+
+[debug]
+enable = false
+listen = "127.0.0.1:7878"

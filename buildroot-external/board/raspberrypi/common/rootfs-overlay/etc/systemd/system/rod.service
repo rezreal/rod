@@ -1,0 +1,17 @@
+[Unit]
+Description=rod: IAI actuator -> Handy FW4 BLE bridge
+After=bluetooth.service dev-ttyUSB0.device
+Wants=bluetooth.service
+
+[Service]
+Type=simple
+ExecStartPre=/usr/sbin/rfkill unblock bluetooth
+ExecStart=/usr/bin/rod /etc/rod/config.toml
+Restart=on-failure
+RestartSec=3
+Environment=RUST_LOG=rod=info
+StandardOutput=journal
+StandardError=journal
+
+[Install]
+WantedBy=multi-user.target

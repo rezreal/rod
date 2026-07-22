@@ -1,0 +1,30 @@
+[Unit]
+Description=rod: IAI actuator -> Handy FW4 BLE bridge
+Documentation=https://github.com/  # set to your repo
+# BlueZ must be up (GATT server + advertising); the actuator is on a USB serial.
+After=bluetooth.service dev-ttyUSB0.device
+Wants=bluetooth.service
+
+[Service]
+Type=simple
+# Run unprivileged; `pi` already has BLE (D-Bus) and serial (dialout) access.
+User=pi
+Group=pi
+SupplementaryGroups=dialout bluetooth
+WorkingDirectory=/home/pi
+# Clear any rfkill soft-block on the radio first. The leading `+` runs this
+# ExecStartPre as root regardless of User=, so it works without passwordless
+# sudo. This folds in the bt-unblock safeguard — no separate unit needed.
+ExecStartPre=+/usr/sbin/rfkill unblock bluetooth
+ExecStart=/home/pi/rod /home/pi/config.toml
+# On clean exit (Ctrl-C / SIGTERM) the advertisement is released; only restart
+# on failure, with a delay so a crash-loop can't pile up advert instances.
+Restart=on-failure
+RestartSec=3
+Environment=RUST_LOG=rod=info
+# Logs go to the journal: `journalctl -u rod -f`
+StandardOutput=journal
+StandardError=journal
+
+[Install]
+WantedBy=multi-user.target

@@ -1,0 +1,232 @@
+# rod configuration. See SPEC.md §5.
+
+[actuator]
+serial_device  = "/dev/ttyUSB0"
+baud_rate      = 19200             # knock-rod uses 19200 8N1; per-unit configurable
+modbus_slave   = 1
+variant        = "8inch"           # 4/6/8/10/12 inch -> stroke 100/150/200/250/300 mm
+                                   # 8inch (200mm): the unit clamps hard at ~200.1mm (verified).
+home_direction = "negative"
+# Force-release the holding brake (BKRL) whenever the servo is off, so the rod
+# moves freely by hand (drill/learn) and spring-back isn't masked during the
+# peck-probe. No-op on units without a brake. Set false for a vertical mount
+# where releasing the brake could let the rod drop.
+release_brake_on_servo_off = true
+
+[actuator.limits]
+# ShockRodSize enum value == stroke in mm: FourInch=100 ... TwelveInch=300.
+# PNOW/PCMD in 0.01 mm units, so pos[0.01mm] = rel(0..1) x stroke_mm x 100.
+min_position_mm   = 0.0
+max_position_mm   = 200.0          # actuator clamps at ~200mm (8inch unit)
+max_velocity_mm_s = 400.0          # oscillate caps at 40000 x0.01 mm/s; moveTo clamp <= 500 mm/s
+default_accel_g   = 0.3            # knock-rod default (30 x 0.01 G); slider range 0.05-0.5 G
+# Only "trapezoid" works on this controller: the S-curve/filter CTLF MOD bits are
+# rejected with alarm 0xA3 (verified by sweeping every CTLF bit). The profile is
+# forced to trapezoid in code regardless of this value. For smooth motion use
+# [actuator.softening] below instead. See protocol.rs / knock-rod-protocol-notes.md.
+default_motion_profile = "trapezoid" # "trapezoid" | "s_curve" | "filter"
+
+[actuator.softening]
+# Software jerk-limiting. The controller only does trapezoidal moves, so to ease
+# the launch of each oscillation stroke (start + reversals, where the clunk is)
+# the motion shaper expands a stroke into a few sub-moves whose velocity ramps up
+# along a curve. Applies to HAMP and ramp only; HSP/HDSP/drill are never shaped.
+enable              = false  # off = single move per stroke (no behaviour change)
+step_ms             = 40     # interval between sub-moves (bounded by Modbus cadence)
+ramp_ms             = 120    # launch-ramp duration: slow -> full speed over this
+start_velocity_frac = 0.3    # first sub-move speed as a fraction of full
+curve_exp           = 2.0    # ease-in exponent (1 = linear, >1 = gentler start)
+
+[actuator.games]
+# Endurance games (see src/modes/games.rs and the web manual). All defaults are
+# gentle; tune on hardware. Shared knobs first, then per-game.
+zone_min            = 0.1    # oscillation zone (relative 0..1)
+zone_max            = 0.9
+min_velocity_mm_s   = 40.0   # velocity mapped from intensity 0
+max_velocity_mm_s   = 250.0  # velocity mapped from intensity 1
+accel_g             = 0.2
+deadman_timeout_ms  = 150    # button heartbeat window (client resends ~50ms)
+tick_ms             = 100    # scoring / intensity update tick
+# Edge & Recover
+edge_climb_s        = 45.0   # time to climb 0→full while held
+edge_backoff_rate   = 0.6    # intensity fall rate when recovering (per s)
+# Hold the Line
+hold_push_start_pct = 10     # starting thrust (% rated)
+hold_push_max_pct   = 40     # thrust after the ramp
+hold_push_ramp_s    = 90.0   # time for thrust to climb start→max
+hold_line_advance_mm = 15.0  # advance past the line that counts as ground lost
+hold_push_velocity_mm_s = 8.0
+# Gauntlet
+gauntlet_work_s     = 15.0   # first work interval
+gauntlet_work_growth_s = 5.0 # each completed interval adds this
+gauntlet_rest_s     = 12.0   # rest window to signal ready
+# Deadman's Climb
+climb_checkpoints   = 5      # banked checkpoints across the range
+climb_total_s       = 90.0   # time to climb the whole range while held
+# Stillness
+stillness_tolerance_mm = 12.0  # drift from center before the round ends
+stillness_nudge_mm  = 6.0      # size of each random tug
+stillness_nudge_min_ms = 1500  # min/max gap between tugs
+stillness_nudge_max_ms = 4500
+
+[actuator.cycle]
+# Pattern playlist (see src/modes/cycle.rs and the web manual). One button:
+# tap = next pattern (10 total), hold 2s = pause. All patterns share this zone
+# and differ only in speed/shape.
+zone_min          = 0.1    # shared stroke zone (relative 0..1)
+zone_max          = 0.9
+max_velocity_mm_s = 300.0  # cap for the sampled point-to-point moves
+accel_g           = 0.3
+tick_ms           = 80     # waveform sampling interval (bus floor ~80ms)
+long_press_ms     = 2000   # hold this long to toggle pause
+
+[actuator.learn]
+# Teach-and-repeat (see src/modes/learn.rs and the web manual). Press: record
+# (servo off, move by hand) → press: stop → press: imitate (loop) → press:
+# re-arm. The recording is simplified to support points ("Stützpunkte").
+sample_ms           = 80    # position sampling interval while recording
+max_record_s        = 60.0  # cap on recording length
+simplify_epsilon_mm = 2.0   # support-point tolerance (larger = fewer points)
+max_waypoints       = 200   # hard cap on support points
+max_velocity_mm_s   = 300.0 # playback velocity cap
+accel_g             = 0.3
+loop_gap_ms         = 600   # time for the loop-closing segment (last → first)
+
+[actuator.pulse]
+# Heart-rate-reactive oscillation: stroke velocity = bpm × factor, clamped.
+# Needs [sensors.heart_rate] enabled; without a sensor it uses base_bpm.
+default_factor    = 2.0    # mm/s per BPM (the program parameter)
+min_velocity_mm_s = 30.0
+max_velocity_mm_s = 300.0
+zone_min          = 0.1    # stroke zone (relative 0..1)
+zone_max          = 0.9
+accel_g           = 0.2
+base_bpm          = 70     # used when no heart-rate sensor is connected
+
+[actuator.impale]
+# Slow-extension hold program (see src/modes/impale.rs). Hold the button to
+# extend the rod outward at feed_rate_mm_s; release to brake (servo off). After
+# retract_after_s with no press, the rod retracts to home on its own.
+feed_rate_mm_s    = 3.0    # outward extension speed while held (overridable per-command)
+retract_speed_mm_s = 20.0  # speed of the automatic retract back to home
+retract_after_s   = 600    # idle time after release before auto-retract (default 10 min)
+accel_g           = 0.05   # gentle acceleration for impale moves
+deadman_timeout_ms = 150   # button heartbeat window; gap → brake (client resends ~50ms)
+
+[actuator.plumb]
+# Fixed-speed oscillation between the work origin and a hand-set upper bound.
+# Press-and-hold the switch to drop the servo and reposition the rod; releasing
+# captures the new upper bound and resumes oscillation.
+speed_mm_s       = 40.0   # constant oscillation speed
+default_depth_mm = 80.0   # initial upper bound above work origin (clamped to stroke)
+accel_g          = 0.15
+
+[actuator.surge]
+# Arousal-driven oscillation: hold the switch to build intensity (faster, deeper),
+# release to let it ebb.
+rise_rate      = 0.15   # arousal build rate (1/s) while held (~95% in ~20s)
+fall_rate      = 0.08   # arousal decay rate (1/s) while released
+min_speed_mm_s = 5.0    # stroke speed at zero arousal
+max_speed_mm_s = 80.0   # stroke speed at full arousal
+lower_drift_mm = 5.0    # how far the return bound drifts outward at full arousal
+max_depth_pct  = 1.0    # fraction of stroke used as ceiling at full arousal
+accel_g        = 0.1
+
+[actuator.tide]
+# Oscillation whose speed eases up while the switch is held and eases back down
+# when released.
+min_speed_mm_s    = 10.0
+max_speed_mm_s    = 80.0
+default_depth_mm  = 80.0   # upper bound above work origin (clamped to stroke)
+speed_adjust_rate = 20.0   # mm/s change per second
+accel_g           = 0.15
+
+[actuator.echo]
+# Each tap fires one outward-and-back stroke, stepping the depth deeper; a long
+# hold resets the depth back to the start.
+start_depth_mm     = 20.0  # depth of the first stroke above work origin
+step_mm            = 10.0  # depth increment per tap
+max_extra_depth_mm = 0.0   # extra depth cap above origin; 0 -> full stroke
+speed_mm_s         = 50.0
+accel_g            = 0.2
+reset_hold_ms      = 2000  # hold this long to reset depth
+
+[actuator.trace]
+# Oscillation from a fixed ceiling; press-and-hold to set a new lower (return)
+# bound by hand.
+ceiling_depth_mm = 0.0    # ceiling above work origin; 0 -> full stroke
+default_depth_mm = 80.0   # initial stroke length from ceiling
+speed_mm_s       = 40.0
+accel_g          = 0.15
+
+[actuator.tempo]
+# Tap out a rhythm with the switch to set the stroke period; a long hold stops
+# oscillation, and taps ceasing for a few periods auto-stops it.
+min_period_ms   = 400    # fastest tapped tempo
+max_period_ms   = 4000   # slowest tapped tempo
+depth_mm        = 80.0   # stroke depth above work origin
+accel_g         = 0.2
+stop_hold_ms    = 1000   # hold this long to stop
+timeout_periods = 2.0    # auto-stop after this many periods without a tap
+
+[actuator.calibration]
+# Soft-touch ("push-to-contact") calibration: home, then crawl forward at
+# minimal thrust until the rod contacts the work-piece. Triggered via the
+# bridge-control BLE service (SPEC §4.3). Keep these gentle.
+touch_velocity_mm_s = 2.0          # crawl speed while searching for contact
+push_current_pct    = 10           # thrust cap while pressing (lower = softer)
+touch_accel_g       = 0.1          # crawl acceleration
+max_travel_mm       = 0.0          # forward search distance; 0 -> full stroke
+
+[actuator.peck_probe]
+# Two-phase servo-release springback detection. Steps forward, briefly drops the
+# servo, and measures how far the rod springs back. No motor force involved —
+# even very soft elastic contact is detectable.
+coarse_step_mm          = 5.0   # initial scan step size
+fine_step_mm            = 1.0   # refinement step after coarse hit
+fine_back_mm            = 8.0   # back up this far before the fine scan
+move_velocity_mm_s      = 20.0  # stepping speed
+release_ms              = 80    # servo-off window per peck
+springback_threshold_mm = 0.3   # minimum springback to declare contact
+max_travel_mm           = 0.0   # search limit; 0 → full stroke
+return_velocity_mm_s    = 10.0  # return-home speed after probing
+
+[transports]
+enable_ble   = true
+enable_cloud = false               # cloud transport deferred (SPEC §14 #1)
+
+[ble]
+hw_model = 3                       # 3 = Handy 2
+uid      = "a1b2c3d4e5f6"          # generated + persisted on first boot
+adapter  = "hci0"
+
+[cloud]
+server_env = "production"          # production | staging | custom
+custom_url = ""                    # used when server_env = "custom"
+
+[debug]
+# Local raw-Modbus console for protocol work: line-based TCP on loopback. Grants
+# unauthenticated raw bus access — keep it off in normal operation and bound to
+# 127.0.0.1. Connect with:  nc 127.0.0.1 7878   then e.g. `status`, `help`.
+enable = false
+listen = "127.0.0.1:7878"
+
+[sensors.heart_rate]
+# Connect to a Bluetooth heart-rate sensor (chest strap / watch broadcasting the
+# standard Heart Rate Service) as a BLE central, alongside the app peripheral.
+# Feeds the "pulse" program and shows BPM in the web UI. Off by default.
+enable = false
+name   = ""                # optional name substring filter; empty = any HR sensor
+
+[devices.coyote]
+# DG-LAB Coyote 3.0 e-stim box, driven over BLE (central role) — SPIKE, not yet
+# hardware-validated. SAFETY: max_strength caps output far below the device max
+# (200); strength is ramped, zeroed on stop/disconnect, and the device stops if
+# the waveform stream stops. Start LOW. Off by default.
+enable             = false
+name               = ""    # name substring; empty = default Coyote 3.0 name
+max_strength       = 20    # hard per-channel cap (0..200) — keep conservative
+waveform_freq      = 100   # default waveform frequency (user units 10..1000)
+waveform_intensity = 30    # default waveform intensity (0..100)
+follow_scale       = 1.0   # in "follow program" mode, fraction of the cap full
+                           # rod motion reaches (e-stim tracks how hard it moves)

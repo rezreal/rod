@@ -1,0 +1,10 @@
+config BR2_PACKAGE_RPI_BT_FIRMWARE
+	bool "rpi-bt-firmware"
+	help
+	  Broadcom BCM Bluetooth HCD firmware files from RPi-Distro/bluez-firmware.
+	  Required so btattach can upload firmware to the onboard BCM chip at boot:
+	    RPi 3: BCM43430A1.hcd
+	    RPi 4: BCM4345C0.hcd
+	    RPi 5: BCM2712D0.hcd (and variants)
+
+	  https://github.com/RPi-Distro/bluez-firmware

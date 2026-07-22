@@ -1,0 +1,10 @@
+# Raspberry Pi 5 (BCM2712) — 64-bit boot
+# RPi 5 uses an EEPROM bootloader; start*.elf is not used.
+arm_64bit=1
+kernel=Image
+
+disable_splash=1
+boot_delay=0
+
+dtoverlay=disable-wifi
+gpu_mem=16

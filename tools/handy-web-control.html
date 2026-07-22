@@ -1,0 +1,168 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>rod web control</title>
+<style>
+  :root { color-scheme: dark; }
+  body { font: 15px/1.5 system-ui, sans-serif; max-width: 560px; margin: 2rem auto; padding: 0 1rem;
+         background:#15171c; color:#e6e8ec; }
+  h1 { font-size: 1.2rem; }
+  button { font: inherit; padding:.5rem 1rem; border-radius:8px; border:1px solid #3a3f4b;
+           background:#262b35; color:#e6e8ec; cursor:pointer; }
+  button:hover:not(:disabled){ background:#2f3644; }
+  button:disabled{ opacity:.4; cursor:default; }
+  button.primary{ background:#2563eb; border-color:#2563eb; }
+  .row{ display:flex; align-items:center; gap:.75rem; margin:.9rem 0; }
+  .row label{ width:90px; color:#9aa3b2; }
+  input[type=range]{ flex:1; }
+  .val{ width:48px; text-align:right; font-variant-numeric:tabular-nums; }
+  #status{ padding:.5rem .75rem; border-radius:8px; background:#1c2027; border:1px solid #2a2f3a; }
+  #log{ margin-top:1rem; height:160px; overflow:auto; font:12px/1.4 ui-monospace,monospace;
+        background:#0f1115; border:1px solid #2a2f3a; border-radius:8px; padding:.5rem; white-space:pre-wrap; }
+  .dot{ display:inline-block; width:9px; height:9px; border-radius:50%; background:#888; margin-right:.4rem; }
+  .dot.on{ background:#22c55e; } .dot.err{ background:#ef4444; }
+  fieldset{ border:1px solid #2a2f3a; border-radius:10px; margin:1rem 0; }
+  legend{ color:#9aa3b2; padding:0 .4rem; }
+</style>
+</head>
+<body>
+<h1>rod — web control</h1>
+<p style="color:#9aa3b2">Direct Web Bluetooth control of the FW4 bridge (HAMP oscillation). Chrome/Edge only.</p>
+
+<div id="status"><span class="dot" id="dot"></span><span id="statusText">Not connected</span></div>
+<div class="row">
+  <button id="connect" class="primary">Connect</button>
+  <button id="disconnect" disabled>Disconnect</button>
+</div>
+
+<fieldset disabled id="controls">
+  <legend>Oscillation</legend>
+  <div class="row">
+    <button id="start" class="primary">Start</button>
+    <button id="stop">Stop</button>
+  </div>
+  <div class="row">
+    <label>Speed</label>
+    <input type="range" id="speed" min="0" max="100" value="25">
+    <span class="val" id="speedVal">25%</span>
+  </div>
+  <div class="row">
+    <label>Depth min</label>
+    <input type="range" id="min" min="0" max="100" value="10">
+    <span class="val" id="minVal">10%</span>
+  </div>
+  <div class="row">
+    <label>Depth max</label>
+    <input type="range" id="max" min="0" max="100" value="90">
+    <span class="val" id="maxVal">90%</span>
+  </div>
+</fieldset>
+
+<div id="log"></div>
+
+<script>
+// ── FW4 GATT identity (matches the bridge / buttplug thehandy-v3) ──
+const SERVICE = '77834d26-40f7-11ee-be56-0242ac120002';
+const NOTIFY  = '77835410-40f7-11ee-be56-0242ac120002'; // device → client
+const WRITE   = '77835032-40f7-11ee-be56-0242ac120002'; // client → device
+
+
+// ── minimal protobuf encoder (no deps) ──
+const enc = {
+  varint(n){ const b=[]; n>>>=0; do{ let x=n&0x7f; n>>>=7; if(n)x|=0x80; b.push(x);}while(n); return b; },
+  tag(f,wt){ return enc.varint((f<<3)|wt); },
+  f32(x){ const a=new ArrayBuffer(4); new DataView(a).setFloat32(0,x,true); return [...new Uint8Array(a)]; },
+  msg(f,bytes){ return [...enc.tag(f,2), ...enc.varint(bytes.length), ...bytes]; },
+  vfield(f,v){ return [...enc.tag(f,0), ...enc.varint(v)]; },
+  ffield(f,v){ return [...enc.tag(f,5), ...enc.f32(v)]; },
+};
+let reqId = 1;
+// RpcMessage{ type=MESSAGE_TYPE_REQUEST(1), request=Request{ <param @field>, id=2 } }
+function rpc(paramField, paramBytes){
+  const req = [...enc.msg(paramField, paramBytes), ...enc.vfield(2, reqId++)];
+  return new Uint8Array([...enc.vfield(1, 1), ...enc.msg(2, req)]);
+}
+const M = {
+  hampStart: () => rpc(720, []),
+  hampStop:  () => rpc(721, []),
+  hampVel:   v => rpc(723, enc.ffield(1, v)),                 // velocity 0..1
+  hampZone:  (lo,hi) => rpc(725, [...enc.ffield(1, lo), ...enc.ffield(2, hi)]), // min,max 0..1
+};
+
+// ── UI helpers ──
+const $ = id => document.getElementById(id);
+function log(s){ const el=$('log'); el.textContent += s+'\n'; el.scrollTop = el.scrollHeight; }
+function setStatus(text, cls){ $('statusText').textContent = text; $('dot').className = 'dot'+(cls?' '+cls:''); }
+
+let device, rxChar, txChar;
+
+async function connect(){
+  try {
+    setStatus('Requesting device…');
+    device = await navigator.bluetooth.requestDevice({
+      filters: [{ namePrefix: 'OHD_' }],
+      optionalServices: [SERVICE],
+    });
+    device.addEventListener('gattserverdisconnected', onDisconnected);
+    setStatus('Connecting…');
+    const server = await device.gatt.connect();
+    const svc = await server.getPrimaryService(SERVICE);
+    txChar = await svc.getCharacteristic(NOTIFY);
+    rxChar = await svc.getCharacteristic(WRITE);
+    await txChar.startNotifications();
+    txChar.addEventListener('characteristicvaluechanged', e => {
+      const b = new Uint8Array(e.target.value.buffer);
+      log('← ' + [...b].map(x=>x.toString(16).padStart(2,'0')).join(' '));
+    });
+    setStatus('Connected: ' + device.name, 'on');
+    $('connect').disabled = true; $('disconnect').disabled = false; $('controls').disabled = false;
+    log('connected to ' + device.name);
+    // Seed zone + velocity so Start actually moves.
+    // Brief settle delay: the BLE characteristic's write handler needs a moment
+    // after startNotifications() before the first write-without-response arrives
+    // cleanly; sending immediately sometimes drops or corrupts the first packet.
+    await new Promise(r => setTimeout(r, 250));
+    await send(M.hampZone(+$('min').value/100, +$('max').value/100));
+    await new Promise(r => setTimeout(r, 50));
+    await send(M.hampVel(+$('speed').value/100));
+  } catch(err){ setStatus('Error: '+err.message, 'err'); log('✗ '+err); }
+}
+
+function onDisconnected(){
+  setStatus('Disconnected', 'err');
+  $('connect').disabled = false; $('disconnect').disabled = true; $('controls').disabled = true;
+  log('device disconnected');
+}
+
+async function send(bytes){
+  if(!rxChar){ return; }
+  try {
+    // write-without-response keeps latency low for streaming controls
+    await (rxChar.writeValueWithoutResponse ? rxChar.writeValueWithoutResponse(bytes) : rxChar.writeValue(bytes));
+    log('→ ' + [...bytes].map(x=>x.toString(16).padStart(2,'0')).join(' '));
+  } catch(err){ log('✗ write '+err); }
+}
+
+// ── wire up controls ──
+$('connect').onclick = connect;
+$('disconnect').onclick = () => device && device.gatt.connected && device.gatt.disconnect();
+$('start').onclick = () => send(M.hampStart());
+$('stop').onclick  = () => send(M.hampStop());
+
+function bindSlider(id, valId, suffix, onChange){
+  const s = $(id), v = $(valId);
+  const update = () => { v.textContent = s.value + suffix; };
+  s.addEventListener('input', update);
+  s.addEventListener('change', onChange);
+  update();
+}
+bindSlider('speed','speedVal','%', () => send(M.hampVel(+$('speed').value/100)));
+bindSlider('min','minVal','%', () => send(M.hampZone(+$('min').value/100, +$('max').value/100)));
+bindSlider('max','maxVal','%', () => send(M.hampZone(+$('min').value/100, +$('max').value/100)));
+
+if(!navigator.bluetooth){ setStatus('Web Bluetooth unavailable — use Chrome/Edge over https/localhost/file', 'err'); $('connect').disabled = true; }
+</script>
+</body>
+</html>

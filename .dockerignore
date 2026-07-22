@@ -1,0 +1,9 @@
+# The Dockerfile does `COPY . .`; keep host build artifacts and VCS noise out of
+# the build context (faster uploads, no stale target/ leaking in).
+/target
+/.git
+/.github
+/.idea
+/.claude
+/device-uid
+*.md
