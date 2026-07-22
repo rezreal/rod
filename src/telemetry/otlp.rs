@@ -5,20 +5,19 @@
 //! * `tracing-subscriber` (stderr) is always installed.
 //! * If `OTEL_SDK_DISABLED` is not `true` **and** an OTLP endpoint is configured
 //!   (`OTEL_EXPORTER_OTLP_ENDPOINT` or a signal-specific
-//!   `OTEL_EXPORTER_OTLP_{LOGS,METRICS,TRACES}_ENDPOINT`), the logs+metrics+
-//!   traces pipeline is initialised. Otherwise the SDK stays off — zero exporter
-//!   threads, zero overhead.
+//!   `OTEL_EXPORTER_OTLP_{LOGS,METRICS}_ENDPOINT`), the logs+metrics pipeline
+//!   is initialised. Otherwise the SDK stays off — zero exporter threads, zero
+//!   overhead. Distributed traces/spans are not emitted; logs + metrics cover
+//!   this bridge's observability needs.
 //!
 //! Protocol selection honours `OTEL_EXPORTER_OTLP_PROTOCOL`
 //! (`grpc` | `http/protobuf`); endpoints/headers/etc. are read by the SDK from
 //! their standard variables.
 
 use anyhow::Context;
-use opentelemetry::trace::TracerProvider as _;
 use opentelemetry_appender_tracing::layer::OpenTelemetryTracingBridge;
 use opentelemetry_sdk::logs::LoggerProvider;
 use opentelemetry_sdk::metrics::{PeriodicReader, SdkMeterProvider};
-use opentelemetry_sdk::trace::TracerProvider as SdkTracerProvider;
 use opentelemetry_sdk::{runtime, Resource};
 use tracing_subscriber::prelude::*;
 
@@ -29,7 +28,6 @@ pub struct TelemetryGuard {
 
 struct Providers {
     meter: SdkMeterProvider,
-    tracer: SdkTracerProvider,
     logger: LoggerProvider,
 }
 
@@ -38,7 +36,6 @@ impl Drop for TelemetryGuard {
         if let Some(p) = self.providers.take() {
             // Best-effort flush on shutdown.
             let _ = p.meter.shutdown();
-            let _ = p.tracer.shutdown();
             let _ = p.logger.shutdown();
         }
     }
@@ -52,7 +49,6 @@ fn otlp_enabled() -> bool {
     [
         "OTEL_EXPORTER_OTLP_ENDPOINT",
         "OTEL_EXPORTER_OTLP_METRICS_ENDPOINT",
-        "OTEL_EXPORTER_OTLP_TRACES_ENDPOINT",
         "OTEL_EXPORTER_OTLP_LOGS_ENDPOINT",
     ]
     .iter()
@@ -84,15 +80,6 @@ fn resource() -> Resource {
 
 fn metric_exporter(grpc: bool) -> anyhow::Result<opentelemetry_otlp::MetricExporter> {
     let b = opentelemetry_otlp::MetricExporter::builder();
-    Ok(if grpc {
-        b.with_tonic().build()?
-    } else {
-        b.with_http().build()?
-    })
-}
-
-fn span_exporter(grpc: bool) -> anyhow::Result<opentelemetry_otlp::SpanExporter> {
-    let b = opentelemetry_otlp::SpanExporter::builder();
     Ok(if grpc {
         b.with_tonic().build()?
     } else {
@@ -139,16 +126,6 @@ pub fn init() -> anyhow::Result<TelemetryGuard> {
         .with_resource(res.clone())
         .build();
 
-    // Traces: batch span exporter.
-    let tracer_provider = SdkTracerProvider::builder()
-        .with_batch_exporter(
-            span_exporter(grpc).context("span exporter")?,
-            runtime::Tokio,
-        )
-        .with_resource(res.clone())
-        .build();
-    let tracer = tracer_provider.tracer("rod");
-
     // Logs: batch log exporter, bridged from `tracing` events.
     let logger_provider = LoggerProvider::builder()
         .with_batch_exporter(log_exporter(grpc).context("log exporter")?, runtime::Tokio)
@@ -159,23 +136,20 @@ pub fn init() -> anyhow::Result<TelemetryGuard> {
     tracing_subscriber::registry()
         .with(env_filter)
         .with(fmt_layer)
-        .with(tracing_opentelemetry::layer().with_tracer(tracer))
         .with(log_bridge)
         .try_init()
         .ok();
 
     opentelemetry::global::set_meter_provider(meter.clone());
-    opentelemetry::global::set_tracer_provider(tracer_provider.clone());
 
     tracing::info!(
         protocol = if grpc { "grpc" } else { "http/protobuf" },
-        "telemetry: OTLP pipeline initialised (logs + metrics + traces)"
+        "telemetry: OTLP pipeline initialised (logs + metrics)"
     );
 
     Ok(TelemetryGuard {
         providers: Some(Providers {
             meter,
-            tracer: tracer_provider,
             logger: logger_provider,
         }),
     })

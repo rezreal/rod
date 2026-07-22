@@ -20,8 +20,7 @@ serde_json            = "1"
 toml                  = "0.8"
 tracing               = "0.1"
 tracing-subscriber    = { version = "0.3", features = ["env-filter"] }
-tracing-opentelemetry = "0.28"
-opentelemetry         = { version = "0.27", features = ["metrics", "logs", "trace"] }
+opentelemetry         = { version = "0.27", features = ["metrics", "logs"] }
 opentelemetry_sdk     = { version = "0.27", features = ["rt-tokio", "metrics", "logs"] }
 opentelemetry-otlp    = { version = "0.27", features = ["grpc-tonic", "http-proto", "metrics", "logs"] }
 opentelemetry-appender-tracing = "0.27"

@@ -50,7 +50,7 @@ The decisive architectural fact (confirmed from the public protobuf): **both tra
 | Protobuf | `prost` + `prost-build` | Encode/decode the Handy RPC messages |
 | Shared state | `Arc<RwLock<T>>`, `tokio::sync::{mpsc,broadcast}` | Fan-in transports → dispatcher → bus |
 | Logging / tracing | `tracing` + `tracing-subscriber` | Structured logging, span instrumentation |
-| Observability | `opentelemetry`, `opentelemetry_sdk`, `opentelemetry-otlp`, `tracing-opentelemetry` | OTLP logs + metrics + traces, env-var driven (§11) |
+| Observability | `opentelemetry`, `opentelemetry_sdk`, `opentelemetry-otlp` | OTLP logs + metrics, env-var driven (§11) |
 | Config | `serde` + TOML | All parameters configurable |
 | Errors | `thiserror` + `anyhow` | Typed errors |
 
@@ -67,8 +67,7 @@ serde                 = { version = "1", features = ["derive"] }
 toml                  = "0.8"
 tracing               = "0.1"
 tracing-subscriber    = { version = "0.3", features = ["env-filter"] }
-tracing-opentelemetry = "0.27"
-opentelemetry         = { version = "0.27", features = ["metrics", "logs", "trace"] }
+opentelemetry         = { version = "0.27", features = ["metrics", "logs"] }
 opentelemetry_sdk     = { version = "0.27", features = ["rt-tokio", "metrics", "logs"] }
 opentelemetry-otlp    = { version = "0.27", features = ["grpc-tonic", "http-proto", "metrics", "logs"] }
 opentelemetry-semantic-conventions = "0.27"
@@ -417,7 +416,7 @@ Safety: soft position limits and a hard velocity cap are enforced in the transla
 
 Telemetry is **opt-in and entirely driven by the standard OTel environment variables** — no TOML config. On startup the bridge inspects the environment:
 
-- If `OTEL_EXPORTER_OTLP_ENDPOINT` (or a signal-specific `OTEL_EXPORTER_OTLP_{LOGS,METRICS,TRACES}_ENDPOINT`) is set **and** `OTEL_SDK_DISABLED` is not `true`, the OTLP pipeline is initialised (logs + metrics + traces).
+- If `OTEL_EXPORTER_OTLP_ENDPOINT` (or a signal-specific `OTEL_EXPORTER_OTLP_{LOGS,METRICS}_ENDPOINT`) is set **and** `OTEL_SDK_DISABLED` is not `true`, the OTLP pipeline is initialised (logs + metrics).
 - Otherwise the SDK stays disabled and the app logs only to stderr via `tracing-subscriber`. Zero overhead, no exporter threads.
 
 All standard variables are honoured by the SDK, including `OTEL_EXPORTER_OTLP_PROTOCOL` (`grpc` | `http/protobuf`), `OTEL_EXPORTER_OTLP_HEADERS`, `OTEL_SERVICE_NAME` (default `rod`), `OTEL_RESOURCE_ATTRIBUTES`, and `OTEL_METRIC_EXPORT_INTERVAL`.
@@ -507,8 +506,8 @@ Naming follows OTel conventions (`rod.<area>.<thing>`, base units: `mm`, `mm/s`,
 | `rod.modbus.errors.total` | Counter | `1` | CRC/timeout/exception (attr `kind`) |
 | `rod.alarms.total` | Counter | `1` | controller alarms (attr `almc`) |
 
-### 11.3 Logs & traces
-`tracing` events become OTel **log records** through the appender bridge, and `#[tracing::instrument]` spans become OTel **traces** when the exporter is on. Recommended spans: one per inbound RPC request (`request`, `id`, `transport` attributes) wrapping decode→dispatch→Modbus, so dispatch latency and failures are traceable end-to-end. Keep movement-hot-path spans cheap (no per-point spans during HSP — use the counters instead; only span the `Play`/`Setup` boundaries).
+### 11.3 Logs
+`tracing` events become OTel **log records** through the appender bridge when the exporter is on. Distributed traces/spans are intentionally not emitted — logs + metrics cover this bridge's observability needs without the extra exporter surface.
 
 ### 11.4 Cardinality guard
 `stream_id` and `almc` are bounded; never attach raw positions, timestamps, or the connection key as attributes (unbounded / sensitive). Per-point work is recorded as counters/histograms, never as spans or per-point attributes.
