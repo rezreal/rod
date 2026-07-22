@@ -10,7 +10,8 @@ name: buildroot-images
 # Cache strategy:
 #   buildroot-dl/  — downloaded source tarballs (~500 MB, rarely changes)
 #   buildroot-ccache/<board>/ — compiler cache (~200 MB, speeds up rebuilds)
-# Cold build: ~60-90 min. Warm build (dl + ccache hit): ~20-30 min.
+# Cold build (empty caches): ~2h+ per board on a standard runner, hence the
+# 240-minute Build timeout below. Warm build (dl + ccache hit): ~20-30 min.
 
 on:
   push:
@@ -69,7 +70,7 @@ jobs:
 
       - name: Build (${{ matrix.board }})
         run: make -C buildroot/output/${{ matrix.board }}
-        timeout-minutes: 120
+        timeout-minutes: 240
 
       - name: Compress image
         run: |
