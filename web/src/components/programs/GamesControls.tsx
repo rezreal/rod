@@ -37,6 +37,7 @@ const PHASE_STYLES: Record<GamePhase, string> = {
   rest:    'bg-slate-600/40 text-slate-300 border border-slate-600/50',
   hold:    'bg-amber-500/20 text-amber-300 border border-amber-500/30',
   slip:    'bg-rose-500/20 text-rose-300 border border-rose-500/30',
+  win:     'bg-emerald-500/20 text-emerald-300 border border-emerald-500/30',
 }
 
 const PHASE_LABELS: Record<GamePhase, string> = {
@@ -47,10 +48,11 @@ const PHASE_LABELS: Record<GamePhase, string> = {
   rest:    'Rest',
   hold:    'Hold',
   slip:    'Slip',
+  win:     'Win',
 }
 
 /** Format a duration in seconds as `Xs` (< 60 s) or `M:SS`. */
-function formatScore(sec: number): string {
+function formatDuration(sec: number): string {
   const total = Math.max(0, Math.round(sec))
   if (total < 60) return `${total}s`
   const m = Math.floor(total / 60)
@@ -119,7 +121,7 @@ export function GamesControls() {
   // While armed, `level` is repurposed as the hardware ready-tap count.
   const level = Math.round(game?.level ?? 0)
   const readyTaps = isArmed ? Math.min(level, READY_TAPS) : 0
-  const score = game?.scoreS ?? 0
+  const duration = game?.durationS ?? 0
   const holding = game?.holding ?? false
   const activeKind = game?.kind ?? selected
   const levelLabel = LEVEL_LABELS[activeKind]
@@ -313,11 +315,11 @@ export function GamesControls() {
             </div>
           </div>
 
-          {/* Score + level */}
+          {/* Duration + level */}
           <div className="grid grid-cols-2 gap-3">
             <div className="flex flex-col">
-              <span className="text-[10px] uppercase tracking-widest text-slate-500">Score</span>
-              <span className="text-lg font-mono font-semibold text-slate-100">{formatScore(score)}</span>
+              <span className="text-[10px] uppercase tracking-widest text-slate-500">Duration</span>
+              <span className="text-lg font-mono font-semibold text-slate-100">{formatDuration(duration)}</span>
             </div>
             <div className="flex flex-col">
               <span className="text-[10px] uppercase tracking-widest text-slate-500">

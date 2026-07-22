@@ -181,6 +181,8 @@ pub enum GamePhase {
     Hold,
     /// Lost ground / moved too much this round.
     Slip,
+    /// Reached the top of the climb (Deadman's Climb) — round over, won.
+    Win,
 }
 
 impl GamePhase {
@@ -193,6 +195,7 @@ impl GamePhase {
             GamePhase::Rest => "rest",
             GamePhase::Hold => "hold",
             GamePhase::Slip => "slip",
+            GamePhase::Win => "win",
         }
     }
 }
@@ -207,8 +210,8 @@ pub struct GameRuntime {
     pub intensity: f32,
     /// Level / interval / checkpoint / lines-lost, interpreted per game.
     pub level: u32,
-    /// Primary endurance metric: seconds survived / held this session.
-    pub score_s: f32,
+    /// Elapsed duration, in seconds, survived / held this session.
+    pub duration_s: f32,
     /// Whether the deadman button is currently held.
     pub holding: bool,
 }
@@ -241,7 +244,7 @@ impl Default for GameRuntime {
             phase: GamePhase::Idle,
             intensity: 0.0,
             level: 0,
-            score_s: 0.0,
+            duration_s: 0.0,
             holding: false,
         }
     }

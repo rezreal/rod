@@ -214,7 +214,7 @@ export const useDeviceStore = create<DeviceStore>((set) => ({
         t.game?.phase     !== prev_s.game?.phase     ||
         t.game?.intensity !== prev_s.game?.intensity ||
         t.game?.level     !== prev_s.game?.level     ||
-        t.game?.scoreS    !== prev_s.game?.scoreS    ||
+        t.game?.durationS !== prev_s.game?.durationS ||
         t.game?.holding   !== prev_s.game?.holding   ||
         // Cycle state
         t.cycle?.pattern      !== prev_s.cycle?.pattern      ||
