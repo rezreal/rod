@@ -75,21 +75,32 @@ everything else builds and tests normally.
 
 ## Build for the Raspberry Pi (arm64)
 
-The only deployment target is the Pi. The build is defined by the multi-stage
-[`Dockerfile`](Dockerfile), built for a **matching `--platform`** so the
-toolchain is native to the target and the output is the exact `aarch64` ELF the
-Pi runs (linked against `libdbus-1.so.3`) — no host/target mismatch.
+The only deployment target is the Pi (3/4/5), all of which run 64-bit
+Raspberry Pi OS, so arm64 is the only target — no 32-bit (armv7) build. The
+build is defined by the multi-stage [`Dockerfile`](Dockerfile), built for
+`--platform linux/arm64` so the output is the exact `aarch64` ELF the Pi runs
+(linked against `libdbus-1.so.3`).
+
+The `builder` stage itself always runs on the build host's *own* platform and
+cross-compiles to arm64, rather than running under QEMU as a "native" build
+for the target — see the note in the [`Dockerfile`](Dockerfile) header. On an
+Apple-Silicon host, host and target already match so this is just a native
+build, same as always. On any other host (amd64 laptops/desktops, Windows or
+Intel/AMD macOS via Docker Desktop, CI), rustc/LLVM run at full native host
+speed and only the final link step targets arm64 — a clean build of this
+crate's dependency tree takes ~4 min instead of ~7+ min under emulation, and
+incremental rebuilds (touching one source file) take well under a minute.
 
 **Just the Pi binary** (the usual case — deploy the ELF to the Pi directly):
 
 ```sh
-scripts/build-pi.sh            # arm64 (64-bit Raspberry Pi OS), the default
-scripts/build-pi.sh armv7      # 32-bit Pi (runs under qemu emulation; slower)
-# -> target/linux-<arch>/release/rod
+scripts/build-pi.sh
+# -> target/linux-arm64/release/rod
 ```
 
 The script wraps `docker build --target export --output`, which runs the
 Dockerfile's `builder` stage (installs `libdbus-1-dev` + `protobuf-compiler`,
+plus a cross gcc/libc/libdbus for the target arch when cross-compiling,
 `cargo build --release`, strips) and writes out only the binary — no image. It
 finds Docker on `PATH` or in `~/.rd/bin` (Rancher Desktop) and needs BuildKit
 (default in current Docker). BuildKit cache mounts keep `target/` and the cargo
@@ -104,9 +115,11 @@ docker build --platform linux/arm64 -t rod .
 # run on the Pi, e.g.:  docker run --device /dev/ttyUSB0 rod
 ```
 
-> We deliberately do **not** use `cross`: its 0.2.5 images are amd64-only, so on
-> an Apple-Silicon host they run under x86 emulation and the in-container rustup
-> breaks. Building for a native platform avoids all of that.
+> We deliberately do **not** use the `cross` tool: its 0.2.5 images are
+> amd64-only, so on an Apple-Silicon host they'd run under x86 emulation and
+> the in-container rustup breaks. The Dockerfile's `builder` stage does its
+> own cross-compilation instead (see above), which works natively on any host
+> arch.
 
 **Reproducibility.** The Dockerfile pins its base images (`rust`, `debian-slim`)
 and the BuildKit frontend to both a version tag and a multi-arch `@sha256:`

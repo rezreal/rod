@@ -1,7 +1,7 @@
 # Technical Specification: Handy-Compatible Bridge for an IAI Linear Actuator
 
 **Project:** `rod`
-**Target platform:** Raspberry Pi (Linux, arm64/armv7)
+**Target platform:** Raspberry Pi (Linux, arm64)
 **Language:** Rust (stable)
 **Status:** Draft v3.0 (English)
 
