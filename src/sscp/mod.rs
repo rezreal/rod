@@ -715,15 +715,24 @@ pub enum Command {
     /// Hold (`true`) or release (`false`) the PiuPiu squirt trigger. Resend
     /// `active: true` to keep "holding a shot"; the bridge repeats the
     /// underlying command every 100 ms while held.
+    ///
+    /// `rename`d: serde's `rename_all = "snake_case"` splits "PiuPiu" into two
+    /// words ("piu_piu_squirt"), which doesn't match the device name used
+    /// everywhere else (state fields, telemetry, sidecar files) — pin the
+    /// wire tag explicitly instead.
+    #[serde(rename = "piupiu_squirt")]
     PiuPiuSquirt {
         active: bool,
     },
     /// Start scanning for / connecting the PiuPiu lube launcher (BLE central).
+    #[serde(rename = "piupiu_connect")]
     PiuPiuConnect,
     /// Disconnect the PiuPiu and stop scanning.
+    #[serde(rename = "piupiu_disconnect")]
     PiuPiuDisconnect,
     /// Persist the PiuPiu autoconnect-at-boot setting and connect/disconnect
     /// to match it immediately.
+    #[serde(rename = "set_piupiu_autoconnect")]
     SetPiuPiuAutoconnect {
         enabled: bool,
     },
@@ -779,4 +788,31 @@ pub struct CommandAck {
     pub ok: bool,
     #[serde(skip_serializing_if = "Option::is_none")]
     pub error: Option<String>,
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    /// Every `Command` wire tag the web app actually sends (`web/src/types/sscp.ts`)
+    /// must deserialize here. Guards against `rename_all` mis-splitting a
+    /// variant name like "PiuPiu" into "piu_piu" — a case serde's default
+    /// snake_case conversion gets wrong for repeated-syllable device names,
+    /// silently dropping every command from that device.
+    #[test]
+    fn piupiu_and_coyote_command_tags_match_the_web_app() {
+        let cases = [
+            r#"{"type":"piupiu_squirt","active":true}"#,
+            r#"{"type":"piupiu_connect"}"#,
+            r#"{"type":"piupiu_disconnect"}"#,
+            r#"{"type":"set_piupiu_autoconnect","enabled":true}"#,
+            r#"{"type":"coyote_connect"}"#,
+            r#"{"type":"coyote_disconnect"}"#,
+            r#"{"type":"set_coyote_autoconnect","enabled":true}"#,
+        ];
+        for json in cases {
+            let result: Result<Command, _> = serde_json::from_str(json);
+            assert!(result.is_ok(), "{json} failed to deserialize: {result:?}");
+        }
+    }
 }
