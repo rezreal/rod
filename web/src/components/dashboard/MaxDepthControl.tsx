@@ -17,10 +17,16 @@ const GAP = 5
  * press toward or hold a single far point — ramp, HDSP, HSP, learn, drill,
  * impale, echo, and the Hold the Line game.
  *
- * Comfortable depth is always kept below max depth. Max depth can't be
- * changed while a program is running, so it can't shift a program's own
- * range out from under it mid-run; comfortable depth has no such lock.
- * Both are global (not per-mode) and persisted on the device.
+ * Comfortable depth is always kept below max depth. Max depth is
+ * authoritative: lowering it pulls comfortable depth down to fit (the bridge
+ * does this and echoes the new comfortable value back over telemetry — see
+ * `SetMaxDepth` in src/modbus/driver.rs). Max depth can't be changed while a
+ * program is running; comfortable depth has no such lock. Both are global
+ * (not per-mode) and persisted on the device.
+ *
+ * Each slider's visual scale is fixed at [0, stroke] — it never rescales when
+ * the *other* slider moves the allowed range, only the draggable portion
+ * (and the dimmed-out region marking what's currently off-limits) does.
  */
 export function MaxDepthControl() {
   const connected = useDeviceStore(
@@ -33,7 +39,9 @@ export function MaxDepthControl() {
   const stroke = deviceInfo?.strokeMm ?? 200
   const programRunning = mode !== 'idle' && mode !== 'homing'
 
-  // Local slider values, synced from the device (another client may change them).
+  // Local slider values, synced from the device (another client may change
+  // them — including the bridge itself pulling comfortable down when max
+  // depth shrinks below it).
   const [comfortable, setComfortable] = useState(comfortableDepthMm || Math.max(MIN, stroke - GAP))
   const prevComfortable = useRef(comfortableDepthMm)
   if (comfortableDepthMm !== prevComfortable.current) {
@@ -50,21 +58,25 @@ export function MaxDepthControl() {
 
   if (!connected) return null
 
-  // Bounds derived from the device's authoritative (committed) values, not the
-  // in-flight drag value, so they only move once the other slider is released.
-  const comfortableCeiling = Math.max(MIN, Math.min(stroke - GAP, (maxDepthMm || stroke) - GAP))
-  const maxFloor = Math.min(stroke, (comfortableDepthMm || MIN) + GAP)
+  // Allowed-value limits derived from the device's authoritative (committed)
+  // values, not the in-flight drag value — but note these bound the *value*,
+  // not the slider's visual scale (see DepthSlider).
+  const comfortableLimitMax = Math.min(stroke - GAP, (maxDepthMm || stroke) - GAP)
+  const comfortableLimitMin = Math.min(MIN, comfortableLimitMax)
 
   const commitComfortable = (mm: number) => {
-    const clamped = Math.min(Math.max(mm, MIN), comfortableCeiling)
+    const clamped = Math.min(Math.max(mm, comfortableLimitMin), comfortableLimitMax)
     setComfortable(clamped)
     send({ type: 'set_comfortable_depth', mm: clamped })
   }
   const commitMax = (mm: number) => {
     if (programRunning) return
-    const clamped = Math.max(Math.min(mm, stroke), maxFloor)
+    const clamped = Math.min(Math.max(mm, MIN), stroke)
     setMax(clamped)
     send({ type: 'set_max_depth', mm: clamped })
+    // If this drops below the current comfortable depth, the bridge pulls
+    // comfortable down and echoes the new value back over telemetry — no
+    // separate command needed here.
   }
 
   return (
@@ -73,8 +85,8 @@ export function MaxDepthControl() {
         label="Comfortable depth"
         hint="oscillating modes"
         value={comfortable}
-        min={MIN}
-        max={comfortableCeiling}
+        limitMin={comfortableLimitMin}
+        limitMax={comfortableLimitMax}
         stroke={stroke}
         onChange={setComfortable}
         onCommit={commitComfortable}
@@ -91,8 +103,8 @@ export function MaxDepthControl() {
         label="Max depth"
         hint="ramp, HDSP/HSP, learn, drill, impale, echo, Hold the Line"
         value={max}
-        min={maxFloor}
-        max={stroke}
+        limitMin={MIN}
+        limitMax={stroke}
         stroke={stroke}
         onChange={setMax}
         onCommit={commitMax}
@@ -107,8 +119,8 @@ function DepthSlider({
   label,
   hint,
   value,
-  min,
-  max,
+  limitMin,
+  limitMax,
   stroke,
   onChange,
   onCommit,
@@ -119,8 +131,11 @@ function DepthSlider({
   label: string
   hint: string
   value: number
-  min: number
-  max: number
+  /** Lowest/highest value the user may currently commit — may be narrower
+   * than [0, stroke], but the slider's own visual scale always spans the
+   * full [0, stroke] so it never rescales when this narrows or widens. */
+  limitMin: number
+  limitMax: number
   stroke: number
   onChange: (v: number) => void
   onCommit: (v: number) => void
@@ -128,7 +143,12 @@ function DepthSlider({
   disabledNote?: string
   quickSet?: { label: string; mm: number }
 }) {
-  const pct = ((value - min) / Math.max(1, max - min)) * 100
+  const clampToLimit = (v: number) => Math.min(Math.max(v, limitMin), limitMax)
+  const toPct = (v: number) => (v / Math.max(1, stroke)) * 100
+
+  const pct = toPct(value)
+  const limitMinPct = toPct(limitMin)
+  const limitMaxPct = toPct(limitMax)
 
   return (
     <div className={`flex flex-col gap-2 ${disabled ? 'opacity-50' : ''}`}>
@@ -143,18 +163,26 @@ function DepthSlider({
       </div>
 
       <div className="relative h-8 flex items-center">
-        <div className="absolute inset-x-0 h-2 bg-slate-700 rounded-full">
-          <div className="h-full rounded-full bg-amber-500" style={{ width: `${pct}%` }} />
-        </div>
+        {/* Full fixed-scale track (0–stroke), dimmed outside what's currently allowed */}
+        <div className="absolute inset-x-0 h-2 bg-slate-700/30 rounded-full" />
+        <div
+          className="absolute h-2 bg-slate-700 rounded-full"
+          style={{ left: `${limitMinPct}%`, width: `${Math.max(0, limitMaxPct - limitMinPct)}%` }}
+        />
+        <div className="absolute h-2 rounded-full bg-amber-500" style={{ width: `${pct}%` }} />
+        {/* Native input spans the full fixed scale so dragging always maps to
+         * the same physical position; the committed/displayed value is
+         * clamped to [limitMin, limitMax] so the custom thumb below soft-stops
+         * at the edge of the allowed region instead of rescaling it. */}
         <input
           type="range"
-          min={min}
-          max={max}
+          min={0}
+          max={stroke}
           step={1}
           value={value}
           disabled={disabled}
-          onChange={(e) => onChange(parseFloat(e.target.value))}
-          onPointerUp={(e) => onCommit(parseFloat((e.target as HTMLInputElement).value))}
+          onChange={(e) => onChange(clampToLimit(parseFloat(e.target.value)))}
+          onPointerUp={(e) => onCommit(clampToLimit(parseFloat((e.target as HTMLInputElement).value)))}
           className="absolute inset-0 w-full h-full opacity-0 cursor-pointer disabled:cursor-not-allowed"
           style={{ touchAction: 'none' }}
         />

@@ -747,8 +747,11 @@ pub enum BridgeCommand {
     /// Fire-and-forget; always succeeds (clamped rather than rejected).
     SetComfortableDepth { mm: f32 },
     /// Set the max depth (mm) for modes that press toward or hold a single far
-    /// point. Clamped to `[comfortable_depth + MIN_DEPTH_GAP_MM, stroke]` and
-    /// persisted across reboots. Fire-and-forget, but silently ignored (with a
-    /// log warning) while `AppState::program_running` is true.
+    /// point. Clamped to `[0, stroke]` and persisted across reboots. Max depth
+    /// is authoritative: if this pulls the ceiling below the current
+    /// comfortable depth, comfortable depth is lowered to fit (and persisted)
+    /// rather than the max-depth change being blocked. Fire-and-forget, but
+    /// silently ignored (with a log warning) while `AppState::program_running`
+    /// is true.
     SetMaxDepth { mm: f32 },
 }
