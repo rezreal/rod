@@ -4,7 +4,7 @@ import { useStatus } from '../../hooks/useDeviceState'
 const MODE_LABELS: Record<ProgramMode, string> = {
   idle:   'IDLE',
   hamp:   'HAMP',
-  hdsp:   'MANUAL',
+  hdsp:   'TOUCHPAD',
   hsp:    'SCRIPT',
   homing: 'HOMING',
   drill:  'DRILL',

@@ -3,7 +3,7 @@ import { CycleControls } from './CycleControls'
 import { DrillControls } from './DrillControls'
 import { GamesControls } from './GamesControls'
 import { HampControls } from './HampControls'
-import { HdspControls } from './HdspControls'
+import { TouchpadControls } from './TouchpadControls'
 import { HspControls } from './HspControls'
 import { ImpaleControls } from './ImpaleControls'
 import { LearnControls } from './LearnControls'
@@ -18,7 +18,7 @@ import { TempoControls } from './TempoControls'
 
 const TITLES = {
   hamp:  'Oscillation',
-  hdsp:  'Manual',
+  hdsp:  'Touchpad',
   hsp:   'Script',
   drill: 'Drill',
   ramp:  'Auto-Ramp',
@@ -45,7 +45,7 @@ export function ProgramDrawer() {
       </div>
 
       {activeProgram === 'hamp'  && <HampControls />}
-      {activeProgram === 'hdsp'  && <HdspControls />}
+      {activeProgram === 'hdsp'  && <TouchpadControls />}
       {activeProgram === 'hsp'   && <HspControls />}
       {activeProgram === 'drill' && <DrillControls />}
       {activeProgram === 'ramp'  && <RampControls />}
