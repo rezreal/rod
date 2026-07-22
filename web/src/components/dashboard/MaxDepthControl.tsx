@@ -5,6 +5,12 @@ import { useDeviceStore } from '../../store/deviceStore'
 
 const MIN = 10
 
+// Mirrors the backend's `HARD_STOP_MARGIN_MM` (src/modbus/driver.rs) — the
+// gap kept off the physical hard stop. Used here only to advise the user at
+// configuration time, not to enforce anything (the backend clamp is what
+// actually protects the hardware).
+const SAFETY_MARGIN_MM = 3
+
 /**
  * Two-tier global depth ceiling.
  *
@@ -62,6 +68,25 @@ export function MaxDepthControl() {
   const comfortableLimitMax = Math.min(stroke, maxDepthMm || stroke)
   const comfortableLimitMin = Math.min(MIN, comfortableLimitMax)
 
+  // Warn if the calibrated origin plus the configured depth would land past
+  // the physical travel available (stroke minus the hard-stop margin) —
+  // several modes (plumb, tide, surge, tempo, echo, trace) target
+  // `origin + depth` directly, so a generous origin can eat most or all of
+  // the room a depth setting expects to have.
+  const origin = workOriginMm ?? 0
+  const travelLimitMm = stroke - SAFETY_MARGIN_MM
+  const overflowWarnings: string[] = []
+  if (origin + comfortable > travelLimitMm) {
+    overflowWarnings.push(
+      `origin (${Math.round(origin)} mm) + comfortable depth (${Math.round(comfortable)} mm) = ${Math.round(origin + comfortable)} mm`,
+    )
+  }
+  if (origin + max > travelLimitMm) {
+    overflowWarnings.push(
+      `origin (${Math.round(origin)} mm) + max depth (${Math.round(max)} mm) = ${Math.round(origin + max)} mm`,
+    )
+  }
+
   const commitComfortable = (mm: number) => {
     const clamped = Math.min(Math.max(mm, comfortableLimitMin), comfortableLimitMax)
     setComfortable(clamped)
@@ -109,6 +134,15 @@ export function MaxDepthControl() {
         disabled={programRunning}
         disabledNote="Stop the running program to change max depth"
       />
+
+      {overflowWarnings.length > 0 && (
+        <div className="rounded-lg bg-rose-950/40 border border-rose-700/50 px-3 py-2 text-[11px] text-rose-300 leading-snug">
+          <span className="font-semibold">Exceeds available travel</span> — only{' '}
+          {Math.round(travelLimitMm)} mm is reachable past the {SAFETY_MARGIN_MM} mm safety
+          margin: {overflowWarnings.join('; ')}. Recalibrate closer to the surface or lower the
+          depth.
+        </div>
+      )}
     </div>
   )
 }

@@ -7,9 +7,14 @@ interface Props {
 
 export function StrokeGauge({ className = '' }: Props) {
   const { positionPct, moving, direction } = usePosition()
-  const { hamp, comfortableDepthMm, maxDepthMm, workOriginMm } = useStatus()
+  const { mode, hamp, comfortableDepthMm, maxDepthMm, workOriginMm } = useStatus()
   const stroke = useDeviceStore((s) => s.deviceInfo?.strokeMm ?? 200)
 
+  // The backend always sends `hamp` telemetry (so HAMP's own sliders can
+  // init before it's ever run) — only draw its zone on the gauge while HAMP
+  // is actually the active mode, else it's a stray marker for whatever mode
+  // is really running.
+  const hampActive = mode === 'hamp'
   const zoneMin = hamp?.zoneMin ?? 0.05
   const zoneMax = hamp?.zoneMax ?? 0.95
   const extending = direction === 'extending'
@@ -20,14 +25,12 @@ export function StrokeGauge({ className = '' }: Props) {
   const trackX = 28
   const trackW = 20
   const indicatorY = trackH * (1 - positionPct)
-  const zoneMinY = trackH * (1 - zoneMin)
-  const zoneMaxY = trackH * (1 - zoneMax)
-  const zoneH = zoneMinY - zoneMaxY
+
+  const clampPct = (p: number) => Math.min(1, Math.max(0, p))
 
   // Depth ceilings + calibrated origin — all live in the same absolute
   // [0, stroke] mm frame as positionMm (0 = retracted/home), so they convert
   // to the gauge's y-axis the same way positionPct does.
-  const clampPct = (p: number) => Math.min(1, Math.max(0, p))
   const comfortablePct = comfortableDepthMm > 0 ? clampPct(comfortableDepthMm / stroke) : undefined
   const maxPct = maxDepthMm > 0 ? clampPct(maxDepthMm / stroke) : undefined
   const originPct = workOriginMm !== undefined ? clampPct(workOriginMm / stroke) : undefined
@@ -35,6 +38,19 @@ export function StrokeGauge({ className = '' }: Props) {
   const comfortableY = comfortablePct !== undefined ? trackH * (1 - comfortablePct) : undefined
   const maxY = maxPct !== undefined ? trackH * (1 - maxPct) : undefined
   const originY = originPct !== undefined ? trackH * (1 - originPct) : undefined
+
+  // HAMP's zone (0..1) is relative to its own outer limits — the calibrated
+  // origin at 0.0 and the comfortable-depth ceiling at 1.0 (src/modes/hamp.rs:
+  // "0.0 is the origin, 1.0 the far end of the stroke", and comfortable depth
+  // is the ceiling `depth_scaled` compresses oscillating-mode moves into) —
+  // not the full [0, stroke] gauge scale.
+  const originMm = workOriginMm ?? 0
+  const comfortableCeilingMm = comfortableDepthMm > 0 ? comfortableDepthMm : stroke
+  const zoneMinPct = clampPct((originMm + zoneMin * (comfortableCeilingMm - originMm)) / stroke)
+  const zoneMaxPct = clampPct((originMm + zoneMax * (comfortableCeilingMm - originMm)) / stroke)
+  const zoneMinY = trackH * (1 - zoneMinPct)
+  const zoneMaxY = trackH * (1 - zoneMaxPct)
+  const zoneH = zoneMinY - zoneMaxY
 
   return (
     <div className={`flex flex-col items-center gap-3 ${className}`}>
@@ -93,35 +109,41 @@ export function StrokeGauge({ className = '' }: Props) {
           </rect>
         )}
 
-        {/* Zone highlight */}
-        <rect
-          x={trackX}
-          y={12 + zoneMaxY}
-          width={trackW}
-          height={zoneH}
-          rx={4}
-          className="fill-cyan-500/20"
-        />
+        {/* Zone highlight — HAMP-only; the backend always sends `hamp`
+            telemetry so its own sliders can init before it's run, so gate on
+            the active mode instead of just presence of the data. */}
+        {hampActive && (
+          <>
+            <rect
+              x={trackX}
+              y={12 + zoneMaxY}
+              width={trackW}
+              height={zoneH}
+              rx={4}
+              className="fill-cyan-500/20"
+            />
 
-        {/* Zone boundary ticks */}
-        <line
-          x1={trackX - 6}
-          y1={12 + zoneMinY}
-          x2={trackX + trackW + 6}
-          y2={12 + zoneMinY}
-          stroke="#22d3ee"
-          strokeWidth={1.5}
-          opacity={0.5}
-        />
-        <line
-          x1={trackX - 6}
-          y1={12 + zoneMaxY}
-          x2={trackX + trackW + 6}
-          y2={12 + zoneMaxY}
-          stroke="#22d3ee"
-          strokeWidth={1.5}
-          opacity={0.5}
-        />
+            {/* Zone boundary ticks */}
+            <line
+              x1={trackX - 6}
+              y1={12 + zoneMinY}
+              x2={trackX + trackW + 6}
+              y2={12 + zoneMinY}
+              stroke="#22d3ee"
+              strokeWidth={1.5}
+              opacity={0.5}
+            />
+            <line
+              x1={trackX - 6}
+              y1={12 + zoneMaxY}
+              x2={trackX + trackW + 6}
+              y2={12 + zoneMaxY}
+              stroke="#22d3ee"
+              strokeWidth={1.5}
+              opacity={0.5}
+            />
+          </>
+        )}
 
         {/* Fill bar */}
         <rect
