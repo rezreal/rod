@@ -39,6 +39,13 @@ const VCMD_MAX: u32 = 50000;
 /// driving the reconnect loop. Each failed poll already burns its own retries,
 /// so a small count here is several seconds of genuine silence.
 const RECONNECT_AFTER_POLL_FAILURES: u32 = 3;
+/// Mechanical clearance kept off the far physical hard stop for every
+/// mode-driven move (`depth_scaled`), regardless of zone or depth-ceiling
+/// config. Ramming the hard stop trips a controller alarm and can leave
+/// homing unable to recover (see `home`'s doc comment). Calibration/
+/// peck-probe bypass this — they work in real physical coordinates and need
+/// to reach the actual end to detect contact.
+const HARD_STOP_MARGIN_MM: f32 = 3.0;
 
 /// Retry a single bus transaction up to `MAX_RETRIES` times on I/O error
 /// (SPEC §10). Expands to `self.bus.<call>.await` re-evaluated per attempt —
@@ -485,6 +492,13 @@ impl<B: ModbusBus> ModbusDriver<B> {
     /// stillness) use `comfortable_depth_mm`. Modes that press toward or hold a
     /// single far point (ramp, HDSP, HSP, learn, drill, impale, echo, and the
     /// Hold the Line game) use `max_depth_mm`.
+    ///
+    /// Whatever the ceiling scaling produces is then hard-clamped away from
+    /// the far physical stop by `HARD_STOP_MARGIN_MM` — this is the single
+    /// choke point every mode's moves pass through (they all queue
+    /// `ActuatorCommand::MoveTo`/`MovePush`, handled in `execute`), so it's
+    /// where a stop margin protects all of them uniformly instead of relying
+    /// on each mode's own defaults staying sane.
     async fn depth_scaled(&mut self, pos_mm: f32) -> f32 {
         let st = self.state.read().await;
         let ceiling = match st.mode {
@@ -498,11 +512,12 @@ impl<B: ModbusBus> ModbusDriver<B> {
             AppMode::Game if st.game.kind == Some(GameKind::HoldTheLine) => st.max_depth_mm,
             _ => st.comfortable_depth_mm,
         };
-        if ceiling > 0.0 && ceiling < self.stroke_mm {
+        let scaled = if ceiling > 0.0 && ceiling < self.stroke_mm {
             pos_mm * (ceiling / self.stroke_mm)
         } else {
             pos_mm
-        }
+        };
+        scaled.min(self.stroke_mm - HARD_STOP_MARGIN_MM)
     }
 
     /// Execute a single move (FC 0x10 @ 0x9900). Converts engineering units to
@@ -1298,6 +1313,39 @@ mod tests {
         assert_eq!(pcmd, 30000); // clamped to stroke
         assert_eq!(state.try_read().unwrap().target_mm, 300.0);
         assert!(state.try_read().unwrap().is_moving);
+    }
+
+    #[tokio::test]
+    async fn queued_move_to_is_kept_off_the_hard_stop_by_default() {
+        let (mut d, _s) = driver(FakeBus::default());
+        // No comfortable_depth_mm configured (default 0 = unset): a mode asking
+        // for the literal far end of a 300 mm stroke must still be kept
+        // HARD_STOP_MARGIN_MM off it, not driven straight into the hard stop.
+        d.execute(ActuatorCommand::MoveTo {
+            pos_mm: 300.0,
+            vel_mm_s: 200.0,
+            accel_g: 0.3,
+            profile: MotionProfile::Trapezoid,
+            soften: false,
+        })
+        .await;
+        let (_addr, regs) = &d.bus.reg_writes[0];
+        let pcmd = ((regs[0] as u32) << 16 | regs[1] as u32) as i32;
+        assert_eq!(pcmd, ((300.0 - HARD_STOP_MARGIN_MM) * 100.0) as i32);
+    }
+
+    #[tokio::test]
+    async fn calibration_move_push_bypasses_the_hard_stop_margin() {
+        let (mut d, _s) = driver(FakeBus::default());
+        // calibrate_to_contact/peck_probe call move_push directly (not through
+        // execute/depth_scaled) and must be able to reach the literal end to
+        // detect contact.
+        d.move_push(300.0, 10.0, 0.3, 20, MotionProfile::Trapezoid)
+            .await
+            .unwrap();
+        let (_addr, regs) = &d.bus.reg_writes[0];
+        let pcmd = ((regs[0] as u32) << 16 | regs[1] as u32) as i32;
+        assert_eq!(pcmd, 30000); // full 300 mm, no margin applied
     }
 
     #[tokio::test]
