@@ -1,4 +1,4 @@
-import { useDeviceState } from '../../hooks/useDeviceState'
+import { useProgramSwitch } from '../../hooks/useProgramSwitch'
 
 type NavItem = { id: 'hamp' | 'hdsp' | 'hsp' | 'drill' | 'ramp' | 'game' | 'cycle' | 'learn' | 'pulse' | 'impale' | 'plumb' | 'surge' | 'tide' | 'echo' | 'trace' | 'tempo'; label: string; icon: React.ReactNode }
 
@@ -169,14 +169,14 @@ interface Props {
 }
 
 export function NavRail({ onSettings }: Props) {
-  const { activeProgram, setActiveProgram } = useDeviceState()
+  const { activeProgram, switchProgram } = useProgramSwitch()
 
   function navButton(item: NavItem) {
     const active = activeProgram === item.id
     return (
       <button
         key={item.id}
-        onClick={() => setActiveProgram(item.id)}
+        onClick={() => switchProgram(item.id)}
         className={`flex items-center gap-3 w-full px-3 py-3 rounded-xl transition-colors text-sm font-medium
           ${active
             ? 'bg-cyan-500/20 text-cyan-400'

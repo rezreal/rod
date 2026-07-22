@@ -1,11 +1,11 @@
-import { useDeviceState } from '../../hooks/useDeviceState'
+import { useProgramSwitch } from '../../hooks/useProgramSwitch'
 
 interface Props {
   onSettings: () => void
 }
 
 export function BottomNav({ onSettings }: Props) {
-  const { activeProgram, setActiveProgram } = useDeviceState()
+  const { activeProgram, switchProgram } = useProgramSwitch()
 
   const items: { id: 'hamp' | 'hdsp' | 'hsp' | 'drill' | 'ramp' | 'game' | 'cycle' | 'learn' | 'pulse' | 'impale' | 'plumb' | 'surge' | 'tide' | 'echo' | 'trace' | 'tempo'; label: string; icon: React.ReactNode }[] = [
     {
@@ -173,7 +173,7 @@ export function BottomNav({ onSettings }: Props) {
         return (
           <button
             key={item.id}
-            onClick={() => setActiveProgram(item.id)}
+            onClick={() => switchProgram(item.id)}
             className={`flex flex-col items-center gap-1 px-4 py-3 min-w-[64px] transition-colors
               ${active ? 'text-cyan-400' : 'text-slate-500 hover:text-slate-300'}`}
           >

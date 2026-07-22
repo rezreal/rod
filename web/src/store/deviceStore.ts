@@ -66,10 +66,12 @@ export interface StatusState {
 
 const WAVEFORM_SAMPLES = 150  // ~15 s at 100 ms
 
+export type ActiveProgram = 'hamp' | 'hdsp' | 'hsp' | 'drill' | 'ramp' | 'game' | 'cycle' | 'learn' | 'pulse' | 'impale' | 'plumb' | 'surge' | 'tide' | 'echo' | 'trace' | 'tempo'
+
 interface DeviceStore {
   connectionState: ConnectionState
   deviceInfo: DeviceInfo | null
-  activeProgram: 'hamp' | 'hdsp' | 'hsp' | 'drill' | 'ramp' | 'game' | 'cycle' | 'learn' | 'pulse' | 'impale' | 'plumb' | 'surge' | 'tide' | 'echo' | 'trace' | 'tempo'
+  activeProgram: ActiveProgram
 
   position: PositionState
   status: StatusState
@@ -77,7 +79,7 @@ interface DeviceStore {
   setConnectionState(s: ConnectionState): void
   setTelemetry(t: Telemetry): void
   setDeviceInfo(d: DeviceInfo): void
-  setActiveProgram(p: 'hamp' | 'hdsp' | 'hsp' | 'drill' | 'ramp' | 'game' | 'cycle' | 'learn' | 'pulse' | 'impale' | 'plumb' | 'surge' | 'tide' | 'echo' | 'trace' | 'tempo'): void
+  setActiveProgram(p: ActiveProgram): void
 }
 
 const defaultPosition: PositionState = {
