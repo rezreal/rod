@@ -28,6 +28,14 @@
 ARG RUST_IMAGE=rust:1.96.0-bookworm@sha256:13c186980fa33cc12759b429662a1322939dbe697484b7c33b47dd2698d28460
 ARG DEBIAN_IMAGE=debian:bookworm-slim@sha256:0104b334637a5f19aa9c983a91b54c89887c0984081f2068983107a6f6c21eeb
 
+# Pinned sccache release (a rustc-invocation-level cache — see below). Static
+# musl binaries, one per build-host arch; only the one matching BUILDARCH is
+# ever fetched. To bump: check https://github.com/mozilla/sccache/releases
+# and update the version + both checksums together.
+ARG SCCACHE_VERSION=0.16.0
+ARG SCCACHE_SHA256_AMD64=aec995a83ad3dff3d14b6314e08858b7b73d35ca85a5bcf3d3a9ec07dee35588
+ARG SCCACHE_SHA256_ARM64=f73a5c39f96bb6ebb89cc7915cf182260d4cbf30765322c5e793d0fe8bd80784
+
 # Populated automatically by buildx from --platform / the build host.
 ARG BUILDPLATFORM
 
@@ -43,6 +51,9 @@ ARG BUILDPLATFORM
 FROM --platform=$BUILDPLATFORM ${RUST_IMAGE} AS builder
 ARG TARGETARCH
 ARG BUILDARCH
+ARG SCCACHE_VERSION
+ARG SCCACHE_SHA256_AMD64
+ARG SCCACHE_SHA256_ARM64
 
 # BLE transport links libdbus (BlueZ/D-Bus); protoc compiles the vendored RPC
 # .proto files via build.rs (build-dependencies always run on the build host's
@@ -69,17 +80,36 @@ RUN set -eux; \
         apt-get install -y --no-install-recommends gcc-aarch64-linux-gnu libc6-dev-arm64-cross libdbus-1-dev:arm64; \
         rustup target add aarch64-unknown-linux-gnu; \
     fi; \
-    rm -rf /var/lib/apt/lists/*
+    rm -rf /var/lib/apt/lists/*; \
+    case "${BUILDARCH}" in \
+        amd64) sccache_triple=x86_64-unknown-linux-musl;  sccache_sha256="${SCCACHE_SHA256_AMD64}" ;; \
+        arm64) sccache_triple=aarch64-unknown-linux-musl; sccache_sha256="${SCCACHE_SHA256_ARM64}" ;; \
+        *) echo "unsupported build host arch ${BUILDARCH} for sccache" >&2; exit 1 ;; \
+    esac; \
+    curl -fsSL -o /tmp/sccache.tar.gz \
+        "https://github.com/mozilla/sccache/releases/download/v${SCCACHE_VERSION}/sccache-v${SCCACHE_VERSION}-${sccache_triple}.tar.gz"; \
+    echo "${sccache_sha256}  /tmp/sccache.tar.gz" | sha256sum -c -; \
+    tar -xzf /tmp/sccache.tar.gz -C /tmp; \
+    install -m 0755 "/tmp/sccache-v${SCCACHE_VERSION}-${sccache_triple}/sccache" /usr/local/bin/sccache; \
+    rm -rf /tmp/sccache.tar.gz "/tmp/sccache-v${SCCACHE_VERSION}-${sccache_triple}"
 
 WORKDIR /work
 COPY . .
 
-# Cache mounts keep the cargo registry and target/ across builds on the build
-# host, so repeated builds are incremental despite the from-scratch COPY. The
-# compiled binary lives inside the target/ cache mount, which is NOT part of the
-# image layer — copy it to a stable path so later stages can reach it.
+# `target/` is deliberately NOT cache-mounted (nor is it shared/persisted at
+# all): a directory-wide cargo lock on a *shared* target/ is exactly what
+# serializes concurrent builds (e.g. two git worktrees building at once) on
+# each other — confirmed by seeing "Blocking waiting for file lock on build
+# directory" when two divergent builds raced for the same mount. sccache
+# replaces that with a rustc-invocation-level cache (RUSTC_WRAPPER) whose
+# on-disk format is designed for concurrent, unlocked, multi-build access —
+# genuinely safe to share across simultaneous builds, unlike target/. The
+# registry cache mount is unaffected: it was never the contended resource.
+ENV RUSTC_WRAPPER=sccache
+ENV SCCACHE_DIR=/sccache
+
 RUN --mount=type=cache,target=/usr/local/cargo/registry \
-    --mount=type=cache,target=/work/target \
+    --mount=type=cache,target=/sccache \
     set -eux; \
     if [ "${TARGETARCH}" = "${BUILDARCH}" ]; then \
         cargo build --release --locked; \
@@ -92,7 +122,8 @@ RUN --mount=type=cache,target=/usr/local/cargo/registry \
         cargo build --release --locked --target aarch64-unknown-linux-gnu; \
         cp target/aarch64-unknown-linux-gnu/release/rod /rod; \
         aarch64-linux-gnu-strip /rod; \
-    fi
+    fi; \
+    sccache --show-stats
 
 # ── export (binary only, for bare-Pi deployment) ─────────────────────────────
 # `docker build --target export --output type=local,dest=out` writes just the
