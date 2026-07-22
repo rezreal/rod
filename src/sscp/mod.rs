@@ -34,6 +34,12 @@ pub struct ImpaleTelemetry {
     pub feed_rate_mm_s: f32,
     /// Hold duration (seconds) after release before the rod auto-retracts.
     pub retract_after_s: f32,
+    /// Live countdown (seconds) to the auto-retract while `waiting`; 0 outside
+    /// that phase.
+    pub retract_remaining_s: f32,
+    /// Set for one hold cycle once the retract countdown reaches zero without
+    /// an explicit stop — the win condition.
+    pub won: bool,
 }
 
 #[derive(Debug, Clone, Serialize)]
@@ -437,12 +443,22 @@ pub fn build_telemetry(st: &AppState, cfg: &Config) -> Telemetry {
     };
 
     let impale = if st.impale.active {
+        let retract_remaining_s = st
+            .impale
+            .retract_deadline
+            .map(|d| {
+                d.saturating_duration_since(std::time::Instant::now())
+                    .as_secs_f32()
+            })
+            .unwrap_or(0.0);
         Some(ImpaleTelemetry {
             extending: st.impale.extending,
             waiting: st.impale.waiting,
             retracting: st.impale.retracting,
             feed_rate_mm_s: st.impale.feed_rate_mm_s,
             retract_after_s: st.impale.retract_after_s,
+            retract_remaining_s,
+            won: st.impale.won,
         })
     } else {
         None

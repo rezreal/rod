@@ -8,10 +8,10 @@ import { playFault, playInputNeeded, playMistake, playSuccess } from '../audio/t
  * Invisible watcher: diffs consecutive status snapshots and plays a cue on
  * the transitions that map to "input needed" / "success" / "fault" /
  * "mistake". Faults (e-stop, alarm, actuator disconnected) are hardware/setup
- * problems and get a distinctly harsher sound than mistakes (game slip,
- * missed impale retract window), which are normal gameplay feedback.
- * Cycle/Hamp/Pulse/Ramp have no such signal in their state today, so they're
- * left uncovered rather than firing a cue on an arbitrary field change.
+ * problems and get a distinctly harsher sound than mistakes (game slip),
+ * which are normal gameplay feedback. Cycle/Hamp/Pulse/Ramp have no such
+ * signal in their state today, so they're left uncovered rather than firing a
+ * cue on an arbitrary field change.
  */
 export function AudioFeedback() {
   const status = useStatus()
@@ -43,7 +43,9 @@ export function AudioFeedback() {
 
     if (prev.impale && status.impale) {
       if (!prev.impale.waiting && status.impale.waiting) { playInputNeeded(); return }
-      if (!prev.impale.retracting && status.impale.retracting) { playMistake(); return }
+      // Reaching the retract deadline without an explicit stop is the win
+      // condition for a hold cycle, not a mistake — see ImpaleRuntime::won.
+      if (!prev.impale.won && status.impale.won) { playSuccess(); return }
     }
 
     if (prev.learn && status.learn) {

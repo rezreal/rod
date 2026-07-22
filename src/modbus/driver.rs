@@ -371,13 +371,22 @@ impl<B: ModbusBus> ModbusDriver<B> {
         Ok(())
     }
 
-    /// Deceleration stop (STOP edge = FF00). Keeps the servo on.
+    /// Deceleration stop (STOP edge = FF00 → settle → 0000). Keeps the servo
+    /// on. Like `reset_alarm`/`home_edge`, the coil is driven back down after
+    /// the pulse so the *next* call still produces a rising edge — leaving it
+    /// high would make every stop after the first a no-op on this controller.
     pub async fn decel_stop(&mut self) -> io::Result<()> {
         self.state.write().await.motion_intensity = 0.0;
         retry!(
             self,
-            "decel_stop",
+            "decel_stop_on",
             write_single_coil(protocol::COIL_DECEL_STOP, true)
+        )?;
+        sleep(SILENT_INTERVAL).await;
+        retry!(
+            self,
+            "decel_stop_off",
+            write_single_coil(protocol::COIL_DECEL_STOP, false)
         )
     }
 

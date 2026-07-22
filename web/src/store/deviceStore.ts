@@ -234,11 +234,13 @@ export const useDeviceStore = create<DeviceStore>((set) => ({
         t.pulse?.bpm         !== prev_s.pulse?.bpm         ||
         t.pulse?.velocityMmS !== prev_s.pulse?.velocityMmS ||
         // Impale state
-        t.impale?.extending     !== prev_s.impale?.extending     ||
-        t.impale?.waiting       !== prev_s.impale?.waiting       ||
-        t.impale?.retracting    !== prev_s.impale?.retracting    ||
-        t.impale?.feedRateMmS   !== prev_s.impale?.feedRateMmS   ||
-        t.impale?.retractAfterS !== prev_s.impale?.retractAfterS ||
+        t.impale?.extending       !== prev_s.impale?.extending       ||
+        t.impale?.waiting         !== prev_s.impale?.waiting         ||
+        t.impale?.retracting      !== prev_s.impale?.retracting      ||
+        t.impale?.feedRateMmS     !== prev_s.impale?.feedRateMmS     ||
+        t.impale?.retractAfterS   !== prev_s.impale?.retractAfterS   ||
+        t.impale?.retractRemainingS !== prev_s.impale?.retractRemainingS ||
+        t.impale?.won             !== prev_s.impale?.won             ||
         // Coyote (e-stim) state
         t.coyote?.connected   !== prev_s.coyote?.connected   ||
         t.coyote?.battery     !== prev_s.coyote?.battery     ||

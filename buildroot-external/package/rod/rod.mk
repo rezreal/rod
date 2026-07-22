@@ -9,7 +9,7 @@ ROD_SITE_METHOD = local
 ROD_LICENSE = MIT
 
 # Runtime deps: D-Bus (bluer crate) + BlueZ (bluetoothd peer)
-ROD_DEPENDENCIES = host-rustc dbus bluez5-utils
+ROD_DEPENDENCIES = host-rustc dbus bluez5_utils
 
 # Strip the release binary — saves ~10 MB.
 ROD_CARGO_ENV = RUSTFLAGS="-C strip=symbols"
