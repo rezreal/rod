@@ -1,10 +1,26 @@
 //! HAMP — software oscillation (SPEC §7.2).
 //!
-//! Maps onto knock-rod's `oscillate(speed, lower, upper, accel)`, whose
-//! algorithm is **timer-driven, not PEND-gated**: the task fires a single move
-//! to one end of the zone, then schedules the reversal for the *estimated*
-//! arrival time (distance ÷ speed) plus a small margin. This avoids blocking on
-//! the controller's position-complete bit and keeps the motion smooth.
+//! Maps onto knock-rod's `oscillate(speed, lower, upper, accel)`. Each stroke
+//! is followed by a reversal once the controller reports the move **settled**
+//! (`DSSE.MOVE` clear and `DSS1.PEND` set), not by guessing the travel time
+//! from distance ÷ speed. That guess used to be the only signal: it assumes
+//! the actuator is instantly at full commanded speed for the whole stroke,
+//! ignoring acceleration entirely. `softness` scales the commanded
+//! acceleration down to as little as 10 % of the configured value (see
+//! `stroke`), and — if enabled — the software launch-ramp shaper
+//! (`crate::shaper`) adds a further fixed-duration ramp on top; neither is
+//! visible to a pure distance/speed estimate. The real travel time can end up
+//! arbitrarily larger than the guess, which caused the reversal to fire long
+//! before the actuator got anywhere near the target: a "wiggle" near the
+//! centre of the zone at high speed/softness (the estimate is off by the
+//! most there), or a visible stutter under the shaper's fixed launch ramp at
+//! low speed (where that fixed ramp eats a large fraction of a short
+//! stroke).
+//!
+//! The distance/speed estimate is now only a padded fallback deadline, in
+//! case the controller never reports completion (e.g. moves are silently
+//! suppressed while alarmed, see `driver::execute`) — normal operation is
+//! entirely driven by real status feedback.
 //!
 //! The desired oscillation parameters live in `AppState.hamp`; the dispatcher
 //! writes them and sends a [`HampControl`] message to (re)evaluate.
@@ -25,9 +41,27 @@ use crate::config::{Config, MotionProfile};
 use crate::state::{ActuatorCommand, AppState};
 use crate::telemetry::metrics;
 
-/// Small margin added to each estimated travel time before the reversal, so a
-/// move is never cut short by clock jitter (knock-rod uses 10 ms).
-const REVERSAL_MARGIN: Duration = Duration::from_millis(10);
+/// Cadence for re-checking the controller's motion status while a stroke is
+/// in flight. Finer than the driver's own ~80 ms status-poll interval just
+/// re-reads a value that hasn't changed yet, which is harmless.
+const SETTLE_POLL: Duration = Duration::from_millis(20);
+
+/// Minimum time to wait after issuing a move before trusting the "settled"
+/// status bits. `is_moving` flips true synchronously when the driver issues
+/// the Modbus write, but `positioning_done` (DSS1.PEND) is only cleared on
+/// the driver's *next* status poll — so right after sending a new stroke,
+/// AppState can still show the *previous* stroke's stale "settled" reading.
+/// Without this grace period that stale reading would be mistaken for the
+/// new stroke completing instantly.
+const SETTLE_GRACE: Duration = Duration::from_millis(50);
+
+/// Multiplier and floor applied to the naive distance/speed estimate to get
+/// a fallback deadline. It only needs to be generous, not accurate: real
+/// completion is normally detected from live controller status long before
+/// this fires.
+const SAFETY_FACTOR: u32 = 4;
+const SAFETY_FLOOR: Duration = Duration::from_secs(1);
+const SAFETY_CAP: Duration = Duration::from_secs(15);
 
 pub struct HampTask {
     state: Arc<RwLock<AppState>>,
@@ -38,6 +72,15 @@ pub struct HampTask {
     profile: MotionProfile,
     /// Flag strokes for software jerk-limiting by the motion shaper.
     soften: bool,
+}
+
+/// Fallback wait window for an in-flight stroke.
+#[derive(Clone, Copy)]
+struct SettleWindow {
+    /// Don't trust status bits before this instant (see `SETTLE_GRACE`).
+    not_before: Instant,
+    /// Give up waiting for real completion and reverse anyway at this instant.
+    deadline: Instant,
 }
 
 impl HampTask {
@@ -60,44 +103,54 @@ impl HampTask {
     /// Run the oscillation loop until the control channel closes.
     pub async fn run(self, mut ctrl_rx: mpsc::Receiver<HampControl>) {
         info!("hamp task running");
-        // `out` toggles which end we travel toward; `next` is the next reversal.
+        // `out` toggles which end we travel toward next.
         let mut out = false;
-        let mut next: Option<Instant> = None;
+        let mut settle_by: Option<SettleWindow> = None;
 
         loop {
             tokio::select! {
                 ctrl = ctrl_rx.recv() => match ctrl {
                     None => break,
-                    Some(HampControl::Stop) => next = None,
+                    Some(HampControl::Stop) => settle_by = None,
                     // Start / Update: (re)trigger immediately if we should be running.
-                    Some(_) => {
-                        if self.should_run().await {
-                            next = Some(Instant::now());
-                        } else {
-                            next = None;
-                        }
-                    }
+                    Some(_) => settle_by = self.stroke(&mut out).await,
                 },
-                _ = sleep_until_opt(next), if next.is_some() => {
-                    match self.stroke(&mut out).await {
-                        Some(d) => next = Some(Instant::now() + d),
-                        None => next = None, // stopped or velocity 0
-                    }
+                _ = self.await_settled(settle_by), if settle_by.is_some() => {
+                    settle_by = self.stroke(&mut out).await;
                 }
             }
         }
         info!("hamp task stopped");
     }
 
-    async fn should_run(&self) -> bool {
-        let st = self.state.read().await;
-        st.hamp.running && st.hamp.velocity > 0.0
+    /// Wait for the controller to report the in-flight stroke settled, or for
+    /// `window.deadline` to pass, whichever comes first.
+    async fn await_settled(&self, window: Option<SettleWindow>) {
+        let Some(window) = window else {
+            // The `if settle_by.is_some()` guard on the select! branch means
+            // this is never actually polled when `window` is `None`; pend
+            // defensively rather than relying on that.
+            std::future::pending::<()>().await;
+            return;
+        };
+        tokio::time::sleep_until(window.not_before).await;
+        loop {
+            {
+                let st = self.state.read().await;
+                if !st.is_moving && st.positioning_done {
+                    return;
+                }
+            }
+            tokio::select! {
+                _ = tokio::time::sleep(SETTLE_POLL) => {}
+                _ = tokio::time::sleep_until(window.deadline) => return,
+            }
+        }
     }
 
-    /// Issue one stroke toward the current end and return the estimated time
-    /// until the reversal should be scheduled. Returns `None` if oscillation is
-    /// no longer active.
-    async fn stroke(&self, out: &mut bool) -> Option<Duration> {
+    /// Issue one stroke toward the current end and return the fallback
+    /// settle window. Returns `None` if oscillation is no longer active.
+    async fn stroke(&self, out: &mut bool) -> Option<SettleWindow> {
         let (velocity, min, max, softness, origin) = {
             let st = self.state.read().await;
             if !st.hamp.running || st.hamp.velocity <= 0.0 {
@@ -133,33 +186,28 @@ impl HampTask {
                 soften: self.soften,
             })
             .await;
+        let sent_at = Instant::now();
 
-        // Estimated travel time for the full zone span at this speed.
-        let span_mm = ((max - min) * span_mm).abs();
-        let travel_ms = (span_mm / speed_mm_s) * 1000.0;
-        // travel_ms is in **milliseconds**; use from_millis, not from_secs_f32.
-        // (from_secs_f32(1600.0) = 26 minutes; from_millis(1600) = 1.6 seconds.)
-        let travel = Duration::from_millis(travel_ms.max(1.0) as u64) + REVERSAL_MARGIN;
+        // Naive constant-velocity estimate — deliberately *not* used to
+        // schedule the reversal (see module docs). Only feeds the padded
+        // fallback deadline below.
+        let zone_span_mm = ((max - min) * span_mm).abs();
+        let estimate_ms = ((zone_span_mm / speed_mm_s) * 1000.0).max(1.0).min(u32::MAX as f32);
+        metrics::hamp_stroke(*out, estimate_ms as f64);
 
-        // Record telemetry and update the direction flag in state.
-        metrics::hamp_stroke(*out, travel_ms as f64);
+        let padded =
+            Duration::from_millis(estimate_ms as u64).saturating_mul(SAFETY_FACTOR) + SAFETY_FLOOR;
+        let deadline = sent_at + padded.min(SAFETY_CAP);
+
         {
             let mut st = self.state.write().await;
             st.hamp.direction = *out;
         }
         *out = !*out;
-        Some(travel)
-    }
-}
-
-/// `sleep_until` for an optional deadline. Only constructed when the `select!`
-/// precondition guarantees `Some`, so the `unwrap` is safe.
-async fn sleep_until_opt(deadline: Option<Instant>) {
-    if let Some(d) = deadline {
-        tokio::time::sleep_until(d).await;
-    } else {
-        // Never resolves; the `if next.is_some()` guard prevents reaching here.
-        std::future::pending::<()>().await;
+        Some(SettleWindow {
+            not_before: sent_at + SETTLE_GRACE,
+            deadline,
+        })
     }
 }
 
@@ -181,7 +229,7 @@ mod tests {
     }
 
     #[tokio::test(start_paused = true)]
-    async fn oscillates_between_zone_ends() {
+    async fn reverses_only_after_controller_reports_settled() {
         let state = Arc::new(RwLock::new(AppState::new("u".into(), 1)));
         {
             let mut st = state.write().await;
@@ -209,8 +257,29 @@ mod tests {
             o => panic!("{o:?}"),
         }
 
-        // 300 mm at 200 mm/s = 1500 ms travel + 10 ms margin. Advance past it.
+        // Simulate the driver picking up the move (`is_moving` flips
+        // synchronously; `positioning_done` starts false by default).
+        {
+            let mut st = state.write().await;
+            st.is_moving = true;
+        }
+
+        // The naive distance/speed guess (1500 ms) would have fired a
+        // reversal here under the old timer-driven design. It must not:
+        // the controller hasn't reported the move settled yet.
         tokio::time::advance(Duration::from_millis(1600)).await;
+        assert!(
+            cmd_rx.try_recv().is_err(),
+            "must not reverse before the controller reports settled"
+        );
+
+        // Now the controller reports the move settled.
+        {
+            let mut st = state.write().await;
+            st.is_moving = false;
+            st.positioning_done = true;
+        }
+        tokio::time::advance(SETTLE_POLL + Duration::from_millis(5)).await;
         let second = cmd_rx.recv().await.unwrap();
         match second {
             ActuatorCommand::MoveTo { pos_mm, .. } => assert_eq!(pos_mm, 0.0), // toward min
@@ -222,7 +291,12 @@ mod tests {
             state.write().await.hamp.running = false;
         }
         ctrl_tx.send(HampControl::Stop).await.unwrap();
-        tokio::time::advance(Duration::from_millis(3000)).await;
+        {
+            let mut st = state.write().await;
+            st.is_moving = true;
+            st.positioning_done = false;
+        }
+        tokio::time::advance(Duration::from_secs(3)).await;
         // Drain any in-flight command, then expect silence.
         let _ = cmd_rx.try_recv();
         assert!(cmd_rx.try_recv().is_err());
@@ -256,14 +330,49 @@ mod tests {
             o => panic!("{o:?}"),
         }
 
-        // 250 mm at 200 mm/s = 1250 ms travel + 10 ms margin.
-        tokio::time::advance(Duration::from_millis(1300)).await;
+        // Simulate the controller settling on that move.
+        {
+            let mut st = state.write().await;
+            st.is_moving = false;
+            st.positioning_done = true;
+        }
+        tokio::time::advance(SETTLE_GRACE + Duration::from_millis(5)).await;
         let second = cmd_rx.recv().await.unwrap();
         match second {
             // Toward min => origin + 0.0 * (300 - 50) = 50 mm (the calibrated origin).
             ActuatorCommand::MoveTo { pos_mm, .. } => assert_eq!(pos_mm, 50.0),
             o => panic!("{o:?}"),
         }
+
+        drop(ctrl_tx);
+        let _ = h.await;
+    }
+
+    #[tokio::test(start_paused = true)]
+    async fn falls_back_to_deadline_if_controller_never_reports_settled() {
+        let state = Arc::new(RwLock::new(AppState::new("u".into(), 1)));
+        {
+            let mut st = state.write().await;
+            st.hamp.running = true;
+            st.hamp.velocity = 0.5; // -> 200 mm/s
+            st.hamp.min = 0.0;
+            st.hamp.max = 1.0; // full 300 mm span, 1500 ms naive estimate
+        }
+        let (cmd_tx, mut cmd_rx) = mpsc::channel(16);
+        let (ctrl_tx, ctrl_rx) = mpsc::channel(16);
+        let task = HampTask::new(state.clone(), cmd_tx, &cfg());
+        let h = tokio::spawn(task.run(ctrl_rx));
+
+        ctrl_tx.send(HampControl::Start).await.unwrap();
+        let _ = cmd_rx.recv().await.unwrap();
+
+        // Controller status never updates (e.g. suppressed while alarmed).
+        // 1500 ms estimate * SAFETY_FACTOR(4) + SAFETY_FLOOR(1s) = 7s.
+        tokio::time::advance(Duration::from_millis(6900)).await;
+        assert!(cmd_rx.try_recv().is_err(), "deadline hasn't passed yet");
+        tokio::time::advance(Duration::from_millis(200)).await;
+        let second = cmd_rx.recv().await.unwrap();
+        assert!(matches!(second, ActuatorCommand::MoveTo { .. }));
 
         drop(ctrl_tx);
         let _ = h.await;
