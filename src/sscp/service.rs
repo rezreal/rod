@@ -409,6 +409,11 @@ mod imp {
                     .await
                     .map_err(|e| e.to_string())?;
                 rx.await.map_err(|e| e.to_string())??;
+                // A successful calibration must not leave whatever mode was
+                // running before it started still active — land the device
+                // in the same fully-stopped state a "stop" press produces,
+                // so the user picks the next mode explicitly.
+                dispatcher.stop_everything().await;
             }
             Command::DrillStart { feed_rate_mm_s } => {
                 modes

@@ -783,44 +783,61 @@ impl<B: ModbusBus> ModbusDriver<B> {
     pub async fn peck_probe(&mut self) -> anyhow::Result<f32> {
         info!("peck-probe: homing before scan");
         self.state.write().await.set_mode(AppMode::Homing);
-        self.home().await?;
 
-        let max_mm = if self.peck_max_travel > 0.0 {
-            self.peck_max_travel.min(self.stroke_mm)
-        } else {
-            self.stroke_mm
-        };
+        // Run the fallible sequence in its own block so a `?` anywhere in it
+        // (home, either scan phase, or no-contact-found) short-circuits only
+        // this block, not the whole function — the mode reset below always
+        // runs afterward, on both success and failure.
+        let outcome: anyhow::Result<f32> = async {
+            self.home().await?;
 
-        // Phase 1 — coarse
-        info!(
-            max_mm,
-            step = self.peck_coarse_step,
-            "peck-probe: coarse scan"
-        );
-        let coarse_mm = self
-            .peck_scan(self.peck_coarse_step, self.peck_coarse_step, max_mm)
-            .await?
-            .ok_or_else(|| anyhow::anyhow!("peck-probe: no contact found up to {max_mm:.0}mm"))?;
-        info!(coarse_mm, "peck-probe: coarse contact");
+            let max_mm = if self.peck_max_travel > 0.0 {
+                self.peck_max_travel.min(self.stroke_mm)
+            } else {
+                self.stroke_mm
+            };
 
-        // Phase 2 — fine
-        let fine_start = (coarse_mm - self.peck_fine_back).max(0.0);
-        info!(
-            fine_start,
-            step = self.peck_fine_step,
-            "peck-probe: fine scan"
-        );
-        let contact_mm = self
-            .peck_scan(self.peck_fine_step, fine_start, coarse_mm)
-            .await?
-            .unwrap_or(coarse_mm);
-        info!(contact_mm, "peck-probe: contact located");
+            // Phase 1 — coarse
+            info!(
+                max_mm,
+                step = self.peck_coarse_step,
+                "peck-probe: coarse scan"
+            );
+            let coarse_mm = self
+                .peck_scan(self.peck_coarse_step, self.peck_coarse_step, max_mm)
+                .await?
+                .ok_or_else(|| {
+                    anyhow::anyhow!("peck-probe: no contact found up to {max_mm:.0}mm")
+                })?;
+            info!(coarse_mm, "peck-probe: coarse contact");
 
+            // Phase 2 — fine
+            let fine_start = (coarse_mm - self.peck_fine_back).max(0.0);
+            info!(
+                fine_start,
+                step = self.peck_fine_step,
+                "peck-probe: fine scan"
+            );
+            let contact_mm = self
+                .peck_scan(self.peck_fine_step, fine_start, coarse_mm)
+                .await?
+                .unwrap_or(coarse_mm);
+            info!(contact_mm, "peck-probe: contact located");
+
+            Ok(contact_mm)
+        }
+        .await;
+
+        // Always settle: a failed probe must not leave the device stuck
+        // reporting Homing forever — land back on Idle either way.
         {
             let mut st = self.state.write().await;
-            st.work_origin_mm = Some(contact_mm);
+            if let Ok(pos) = &outcome {
+                st.work_origin_mm = Some(*pos);
+            }
             st.set_mode(AppMode::Idle);
         }
+        let contact_mm = outcome?;
 
         info!("peck-probe: returning home");
         self.move_and_wait_pend(0.0, self.peck_return_vel, self.cal_accel)

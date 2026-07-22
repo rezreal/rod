@@ -4,7 +4,6 @@ import { useStatus } from '../../hooks/useDeviceState'
 import { useDeviceStore } from '../../store/deviceStore'
 import { usePreferencesStore } from '../../store/preferencesStore'
 import { describeAlarm } from '../../lib/alarmCodes'
-import { MaxDepthControl } from '../dashboard/MaxDepthControl'
 import { RawTelemetry } from './RawTelemetry'
 
 interface Props {
@@ -14,14 +13,13 @@ interface Props {
 export function MaintenancePanel({ onClose }: Props) {
   const connectionState = useDeviceStore((s) => s.connectionState)
   const deviceInfo      = useDeviceStore((s) => s.deviceInfo)
-  const { mode, alarmCode, coyoteAutoconnect, piupiuAutoconnect } = useStatus()
+  const { alarmCode, coyoteAutoconnect, piupiuAutoconnect } = useStatus()
   const send = useSendCommand()
   const [showDiag, setShowDiag] = useState(false)
   const audioFeedbackEnabled    = usePreferencesStore((s) => s.audioFeedbackEnabled)
   const setAudioFeedbackEnabled = usePreferencesStore((s) => s.setAudioFeedbackEnabled)
 
   const isConnected = connectionState === 'connected'
-  const isHoming    = mode === 'homing'
   const hasAlarm    = alarmCode !== 0
 
   return (
@@ -81,33 +79,6 @@ export function MaintenancePanel({ onClose }: Props) {
               </button>
             </div>
           )}
-
-          {/* Calibrate */}
-          <div className="flex flex-col gap-3 p-4 bg-slate-800/50 rounded-xl border border-slate-700">
-            <div>
-              <h3 className="text-sm font-semibold text-slate-200">Calibration</h3>
-              <p className="text-xs text-slate-500 mt-1">
-                Homes, then gently steps inward — releasing the servo at each step
-                to sense contact by spring-back (no sustained push) — to locate the
-                work-piece origin. Takes a little while; controls disabled meanwhile.
-              </p>
-            </div>
-            <button
-              onClick={() => send({ type: 'calibrate' })}
-              disabled={!isConnected || isHoming}
-              className="flex items-center justify-center gap-2 py-3 bg-amber-600 hover:bg-amber-500 disabled:bg-slate-700 disabled:text-slate-500 text-white text-sm font-semibold rounded-xl transition-colors"
-            >
-              {isHoming ? (
-                <>
-                  <span className="w-4 h-4 border-2 border-white/30 border-t-white rounded-full animate-spin" />
-                  Homing…
-                </>
-              ) : 'Calibrate (find contact)'}
-            </button>
-
-            {/* Comfortable/max travel depth from the calibrated origin — global */}
-            <MaxDepthControl />
-          </div>
 
           {/* Autoconnect */}
           <div className="flex flex-col gap-3 p-4 bg-slate-800/50 rounded-xl border border-slate-700">
