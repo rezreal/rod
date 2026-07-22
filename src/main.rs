@@ -59,11 +59,19 @@ async fn main() -> anyhow::Result<()> {
     if !cfg.ble.connection_key.is_empty() {
         app_state.connection_key = Some(cfg.ble.connection_key.clone());
     }
-    // Global max-depth ceiling: persisted value (clamped to stroke) or full stroke.
+    // Max-depth ceiling: persisted value (clamped to stroke) or full stroke.
     let stroke_mm = cfg.stroke_mm();
     app_state.max_depth_mm = rod::modbus::driver::load_max_depth()
         .map(|v| v.min(stroke_mm))
         .unwrap_or(stroke_mm);
+    // Comfortable-depth ceiling: persisted value, or — on first boot / upgrade
+    // from before this setting existed — the max-depth ceiling itself, so
+    // oscillating modes keep whatever travel range was already configured for
+    // safety. Always kept below max depth by at least MIN_DEPTH_GAP_MM.
+    app_state.comfortable_depth_mm = rod::modbus::driver::load_comfortable_depth()
+        .unwrap_or(app_state.max_depth_mm)
+        .min(app_state.max_depth_mm - rod::state::MIN_DEPTH_GAP_MM)
+        .max(0.0);
     let state = Arc::new(RwLock::new(app_state));
     let (cmd_tx, cmd_rx) = mpsc::channel(CMD_CHANNEL);
     // Modes/dispatcher send here; the motion shaper forwards to the driver,

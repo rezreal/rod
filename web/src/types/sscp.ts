@@ -196,7 +196,13 @@ export interface Telemetry {
   safetySpeed: boolean
   /** Hand/palm switch on the controller's PIO input (DIPM bit 0). */
   handSwitch: boolean
-  /** Global max-depth (mm): program moves are rescaled into [0, maxDepthMm]. */
+  /** Comfortable-depth ceiling (mm) for oscillating modes (HAMP, cycle, pulse,
+   *  plumb, surge, tide, trace, tempo, and the fixed-zone games). Always kept
+   *  below maxDepthMm. */
+  comfortableDepthMm: number
+  /** Max-depth ceiling (mm) for modes that press toward or hold a single far
+   *  point (ramp, HDSP, HSP, learn, drill, impale, echo, Hold the Line).
+   *  Locked while a program is running. */
   maxDepthMm: number
   /** Work-piece origin (mm) from the last calibration, if any. */
   workOriginMm?: number
@@ -351,7 +357,12 @@ export interface HrConnectCommand    { type: 'hr_connect' }
 /** Disconnect the heart-rate sensor and stop scanning. */
 export interface HrDisconnectCommand { type: 'hr_disconnect' }
 
-/** Set the global max-depth ceiling (mm); bridge clamps to stroke and persists. */
+/** Set the comfortable-depth ceiling (mm) for oscillating modes; bridge clamps
+ *  below max depth and persists. Always accepted (silently clamped). */
+export interface SetComfortableDepthCommand { type: 'set_comfortable_depth'; mm: number }
+/** Set the max-depth ceiling (mm) for modes that press toward or hold a single
+ *  far point; bridge clamps above comfortable depth and persists. Silently
+ *  ignored while a program is running. */
 export interface SetMaxDepthCommand  { type: 'set_max_depth'; mm: number }
 
 export type Command =
@@ -396,6 +407,7 @@ export type Command =
   | CoyoteStopCommand
   | HrConnectCommand
   | HrDisconnectCommand
+  | SetComfortableDepthCommand
   | SetMaxDepthCommand
   | PlumbStartCommand
   | PlumbStopCommand

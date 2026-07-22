@@ -1,6 +1,7 @@
 import { useEffect, useRef, useState } from 'react'
 import { useSendCommand } from '../../hooks/useSendCommand'
 import { useStatus } from '../../hooks/useDeviceState'
+import { useDeviceStore } from '../../store/deviceStore'
 import type { GameKind, GamePhase } from '../../types/sscp'
 import { GAME_DOCS, GamesManual } from './GamesManual'
 
@@ -54,9 +55,12 @@ function formatScore(sec: number): string {
 
 export function GamesControls() {
   const { mode, game } = useStatus()
+  const connectionState = useDeviceStore((s) => s.connectionState)
   const send = useSendCommand()
 
   const isActive = mode === 'game'
+  const isConnected = connectionState === 'connected'
+  const isHoming = mode === 'homing'
 
   const [selected, setSelected] = useState<GameKind>('edge_recover')
   const [showManual, setShowManual] = useState(false)
@@ -157,6 +161,29 @@ export function GamesControls() {
           })}
         </div>
       </div>
+
+      {/* Recalibrate — quick access so users don't have to leave for Settings */}
+      {!isActive && (
+        <button
+          onClick={() => send({ type: 'calibrate' })}
+          disabled={!isConnected || isHoming}
+          className="flex items-center justify-center gap-1.5 text-xs font-medium text-amber-400 hover:text-amber-300 disabled:text-slate-600 disabled:cursor-not-allowed transition-colors -mt-2"
+        >
+          {isHoming ? (
+            <>
+              <span className="w-3 h-3 border-2 border-amber-400/30 border-t-amber-400 rounded-full animate-spin" />
+              Calibrating…
+            </>
+          ) : (
+            <>
+              <svg viewBox="0 0 24 24" className="w-3.5 h-3.5" fill="none" stroke="currentColor" strokeWidth={2}>
+                <path strokeLinecap="round" strokeLinejoin="round" d="M16.023 9.348h4.992v-.001M2.985 19.644v-4.992m0 0h4.992m-4.993 0 3.181 3.183a8.25 8.25 0 0 0 13.803-3.7M4.031 9.865a8.25 8.25 0 0 1 13.803-3.7l3.181 3.182m0-4.991v4.99" />
+              </svg>
+              Recalibrate
+            </>
+          )}
+        </button>
+      )}
 
       {/* Start / Stop */}
       <button
