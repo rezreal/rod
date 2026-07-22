@@ -316,6 +316,13 @@ pub struct ImpaleRuntime {
     pub feed_rate_mm_s: f32,
     /// Hold duration (seconds) after release before the rod auto-retracts.
     pub retract_after_s: f32,
+    /// Wall-clock deadline for the auto-retract while `waiting`, so telemetry
+    /// can compute a live countdown. `None` outside the waiting phase.
+    pub retract_deadline: Option<std::time::Instant>,
+    /// Set once the retract deadline is reached without an explicit Stop —
+    /// the win condition for a hold cycle. Cleared on the next extend
+    /// (button press) or on Start/Stop.
+    pub won: bool,
 }
 
 impl Default for ImpaleRuntime {
@@ -327,6 +334,8 @@ impl Default for ImpaleRuntime {
             retracting: false,
             feed_rate_mm_s: 5.0,
             retract_after_s: 600.0,
+            retract_deadline: None,
+            won: false,
         }
     }
 }

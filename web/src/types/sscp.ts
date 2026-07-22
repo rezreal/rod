@@ -114,6 +114,11 @@ export interface ImpaleState {
   feedRateMmS: number
   /** Hold duration (seconds) after release before the rod auto-retracts. */
   retractAfterS: number
+  /** Live countdown (seconds) to the auto-retract while `waiting`; 0 otherwise. */
+  retractRemainingS: number
+  /** Set for one hold cycle once the retract countdown reaches zero without
+   * an explicit stop — the win condition. */
+  won: boolean
 }
 
 export interface CycleState {

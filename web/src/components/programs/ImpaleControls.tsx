@@ -2,6 +2,66 @@ import { useEffect, useRef, useState } from 'react'
 import { useSendCommand } from '../../hooks/useSendCommand'
 import { useStatus } from '../../hooks/useDeviceState'
 
+/** Format a countdown in seconds as `m:ss`. */
+function fmtCountdown(s: number): string {
+  const total = Math.max(0, Math.ceil(s))
+  const m = Math.floor(total / 60)
+  const sec = total % 60
+  return `${m}:${sec.toString().padStart(2, '0')}`
+}
+
+/** Circular countdown: an emptying ring with the remaining time in the center. */
+function CountdownRing({
+  remainingS,
+  totalS,
+  size = 160,
+}: {
+  remainingS: number
+  totalS: number
+  size?: number
+}) {
+  const stroke = 10
+  const r = (size - stroke) / 2
+  const circumference = 2 * Math.PI * r
+  const frac = totalS > 0 ? Math.min(1, Math.max(0, remainingS / totalS)) : 0
+  const offset = circumference * (1 - frac)
+
+  return (
+    <div className="relative flex items-center justify-center" style={{ width: size, height: size }}>
+      <svg width={size} height={size} className="-rotate-90">
+        <circle
+          cx={size / 2}
+          cy={size / 2}
+          r={r}
+          fill="none"
+          stroke="currentColor"
+          strokeWidth={stroke}
+          className="text-slate-700"
+        />
+        <circle
+          cx={size / 2}
+          cy={size / 2}
+          r={r}
+          fill="none"
+          stroke="currentColor"
+          strokeWidth={stroke}
+          strokeLinecap="round"
+          strokeDasharray={circumference}
+          strokeDashoffset={offset}
+          className="text-amber-400"
+          style={{ transition: 'stroke-dashoffset 0.25s linear' }}
+        />
+      </svg>
+      <div className="absolute flex flex-col items-center">
+        <span className="text-2xl font-mono font-bold text-amber-300 tabular-nums">
+          {fmtCountdown(remainingS)}
+        </span>
+        <span className="text-[10px] uppercase tracking-wide text-slate-500">until retract</span>
+      </div>
+    </div>
+  )
+}
+
 // Interval between deadman heartbeats (ms) while the button is held. Must be
 // ≤ half the bridge's impale deadman_timeout_ms (default 150 ms) so the rod
 // never brakes mid-extension; a gap (release or connection loss) brakes it.
@@ -76,6 +136,24 @@ export function ImpaleControls() {
   const retracting = impale?.retracting   ?? false
   const devRate    = impale?.feedRateMmS  ?? 3.0
   const devHoldS   = impale?.retractAfterS ?? 600
+  const remainingS = impale?.retractRemainingS ?? 0
+  const won        = impale?.won ?? false
+
+  // Show the win banner once per win (won stays true until the next extend
+  // cycle clears it server-side, so guard against re-showing on every
+  // telemetry tick). The chime itself is handled centrally by
+  // <AudioFeedback> — it already watches this same transition.
+  const [showWin, setShowWin] = useState(false)
+  const wonFiredRef = useRef(false)
+  useEffect(() => {
+    if (won && !wonFiredRef.current) {
+      wonFiredRef.current = true
+      setShowWin(true)
+      const t = setTimeout(() => setShowWin(false), 4000)
+      return () => clearTimeout(t)
+    }
+    if (!won) wonFiredRef.current = false
+  }, [won])
 
   const [feedRate, setFeedRate] = useState(devRate)
   // Hold duration is edited in minutes; sent to the device in seconds.
@@ -136,10 +214,16 @@ export function ImpaleControls() {
     if (isActive) send({ type: 'impale_config', retractAfterS: min * 60 })
   }
 
+  // A retract deadline is armed (and ticking) whenever remainingS is
+  // positive — this stays true across repeated extend/release cycles, since
+  // the backend only pauses the deadline's *effect* while extending, it
+  // doesn't reset it.
+  const timerArmed = remainingS > 0
+
   const statusLabel =
-    extending  ? 'Extending' :
+    extending  ? (timerArmed ? 'Extending — retract timer still running' : 'Extending') :
     retracting ? 'Retracting to home' :
-    waiting    ? 'Braked — waiting to retract' :
+    waiting    ? 'Holding — waiting to retract' :
     isActive   ? 'Servo off — rod free' :
                  'Inactive'
 
@@ -159,6 +243,23 @@ export function ImpaleControls() {
         />
         <span className="text-xs text-slate-400">{statusLabel}</span>
       </div>
+
+      {/* Countdown ring — shown whenever the retract deadline is armed, so it
+          stays visible (and keeps counting) through extend/release cycles
+          instead of disappearing every time the button is held again. */}
+      {timerArmed && (
+        <div className="flex justify-center py-2">
+          <CountdownRing remainingS={remainingS} totalS={devHoldS} />
+        </div>
+      )}
+
+      {/* Win banner — shown briefly when the retract deadline is reached
+          without an explicit stop. */}
+      {showWin && (
+        <div className="flex items-center justify-center gap-2 py-2 rounded-xl bg-emerald-500/15 border border-emerald-500/40 text-emerald-300 text-sm font-semibold animate-pulse">
+          Held to the timer — you win!
+        </div>
+      )}
 
       {/* Feed rate */}
       <RangeSlider
@@ -217,7 +318,7 @@ export function ImpaleControls() {
       {isActive && (
         <div className="flex flex-col gap-3">
           <p className="text-xs text-slate-500 text-center">
-            Hold to extend slowly · release to brake and arm the retract timer
+            Hold to extend slowly · release to hold position and arm the retract timer
           </p>
 
           <button
@@ -254,10 +355,11 @@ export function ImpaleControls() {
       <div className="border-t border-slate-800 pt-4">
         <p className="text-xs leading-relaxed text-slate-500">
           <span className="text-slate-400 font-medium">Impale</span> extends the rod
-          slowly while you hold the button. Release and the servo switches off into
-          brake mode, holding position. After a configurable timer (default 10 min)
-          the rod retracts to home on its own. Pressing again before then cancels the
-          timer and resumes extending.
+          slowly while you hold the button. Release and the servo holds position in
+          place, starting the retract timer (default 10 min). Reach it without
+          pressing Exit and you win — the rod then retracts to home on its own.
+          The timer keeps running even if you hold the button to extend further;
+          only Exit Impale Mode resets it.
         </p>
       </div>
 
