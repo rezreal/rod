@@ -8,6 +8,10 @@
 //!
 //! The desired oscillation parameters live in `AppState.hamp`; the dispatcher
 //! writes them and sends a [`HampControl`] message to (re)evaluate.
+//!
+//! The zone (`min`/`max`, 0..1) is relative to the calibrated work origin
+//! (`AppState.work_origin_mm`, defaulting to 0 mm if uncalibrated), not the
+//! physical zero — 0.0 is the origin, 1.0 the far end of the stroke.
 
 use std::sync::Arc;
 use std::time::Duration;
@@ -94,18 +98,29 @@ impl HampTask {
     /// until the reversal should be scheduled. Returns `None` if oscillation is
     /// no longer active.
     async fn stroke(&self, out: &mut bool) -> Option<Duration> {
-        let (velocity, min, max, softness) = {
+        let (velocity, min, max, softness, origin) = {
             let st = self.state.read().await;
             if !st.hamp.running || st.hamp.velocity <= 0.0 {
                 return None;
             }
-            (st.hamp.velocity, st.hamp.min, st.hamp.max, st.hamp.softness)
+            (
+                st.hamp.velocity,
+                st.hamp.min,
+                st.hamp.max,
+                st.hamp.softness,
+                st.work_origin_mm.unwrap_or(0.0),
+            )
         };
         // softness 0 → full configured accel; softness 1 → 10 % of it.
         let effective_accel_g = self.accel_g * (1.0 - softness.clamp(0.0, 1.0) * 0.9);
 
+        // Zone bounds are relative to the calibrated origin, not the physical
+        // zero: 0.0 is the origin itself, 1.0 the far end of the stroke (the
+        // comfortable-depth ceiling further compresses this downstream — see
+        // `driver::depth_scaled`).
+        let span_mm = (self.stroke_mm - origin).max(0.0);
         let target_rel = if *out { min } else { max };
-        let target_mm = target_rel * self.stroke_mm;
+        let target_mm = origin + target_rel * span_mm;
         let speed_mm_s = (velocity * self.max_velocity_mm_s).max(f32::MIN_POSITIVE);
 
         let _ = self
@@ -120,7 +135,7 @@ impl HampTask {
             .await;
 
         // Estimated travel time for the full zone span at this speed.
-        let span_mm = ((max - min) * self.stroke_mm).abs();
+        let span_mm = ((max - min) * span_mm).abs();
         let travel_ms = (span_mm / speed_mm_s) * 1000.0;
         // travel_ms is in **milliseconds**; use from_millis, not from_secs_f32.
         // (from_secs_f32(1600.0) = 26 minutes; from_millis(1600) = 1.6 seconds.)
@@ -211,6 +226,44 @@ mod tests {
         // Drain any in-flight command, then expect silence.
         let _ = cmd_rx.try_recv();
         assert!(cmd_rx.try_recv().is_err());
+
+        drop(ctrl_tx);
+        let _ = h.await;
+    }
+
+    #[tokio::test(start_paused = true)]
+    async fn zone_is_relative_to_calibrated_origin() {
+        let state = Arc::new(RwLock::new(AppState::new("u".into(), 1)));
+        {
+            let mut st = state.write().await;
+            st.work_origin_mm = Some(50.0); // calibrated 50 mm into the 300 mm stroke
+            st.hamp.running = true;
+            st.hamp.velocity = 0.5; // -> 200 mm/s
+            st.hamp.min = 0.0; // origin
+            st.hamp.max = 1.0; // far end of stroke
+        }
+        let (cmd_tx, mut cmd_rx) = mpsc::channel(16);
+        let (ctrl_tx, ctrl_rx) = mpsc::channel(16);
+        let task = HampTask::new(state.clone(), cmd_tx, &cfg());
+        let h = tokio::spawn(task.run(ctrl_rx));
+
+        ctrl_tx.send(HampControl::Start).await.unwrap();
+
+        // First stroke goes toward max => origin + 1.0 * (300 - 50) = 300 mm.
+        let first = cmd_rx.recv().await.unwrap();
+        match first {
+            ActuatorCommand::MoveTo { pos_mm, .. } => assert_eq!(pos_mm, 300.0),
+            o => panic!("{o:?}"),
+        }
+
+        // 250 mm at 200 mm/s = 1250 ms travel + 10 ms margin.
+        tokio::time::advance(Duration::from_millis(1300)).await;
+        let second = cmd_rx.recv().await.unwrap();
+        match second {
+            // Toward min => origin + 0.0 * (300 - 50) = 50 mm (the calibrated origin).
+            ActuatorCommand::MoveTo { pos_mm, .. } => assert_eq!(pos_mm, 50.0),
+            o => panic!("{o:?}"),
+        }
 
         drop(ctrl_tx);
         let _ = h.await;

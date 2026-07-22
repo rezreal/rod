@@ -344,6 +344,10 @@ pub struct HampRuntime {
     pub running: bool,
     pub velocity: f32,
     pub direction: bool,
+    /// Relative zone bounds (0..1), mapped onto `[work_origin_mm, stroke]` —
+    /// 0.0 is the calibrated origin, 1.0 the far end (itself capped by the
+    /// comfortable-depth ceiling; see `HampTask::stroke` and
+    /// `driver::depth_scaled`).
     pub min: f32,
     pub max: f32,
     /// Reversal softness: 0 = hard/snappy (full configured accel),
@@ -358,10 +362,10 @@ impl Default for HampRuntime {
             running: false,
             velocity: 0.0,
             direction: false,
-            // Conservative defaults: keep 10% away from both end-stops so the
-            // first stroke doesn't ram the rod into the physical hard limit.
-            min: 0.1,
-            max: 0.9,
+            // Full range: the calibrated origin and the comfortable-depth
+            // ceiling already bound the stroke, so no extra margin is needed.
+            min: 0.0,
+            max: 1.0,
             softness: 0.5,
         }
     }
