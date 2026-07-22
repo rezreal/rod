@@ -719,11 +719,17 @@ impl Dispatcher {
         let _ = self.modes.echo.send(EchoControl::Stop).await;
         let _ = self.modes.trace.send(TraceControl::Stop).await;
         let _ = self.modes.tempo.send(TempoControl::Stop).await;
-        // Safety: StopAll must also zero any external e-stim device.
+        // Safety: StopAll must also zero any external e-stim device and
+        // release a held lube squirt.
         let _ = self
             .modes
             .coyote
             .send(crate::devices::CoyoteControl::Stop)
+            .await;
+        let _ = self
+            .modes
+            .piupiu
+            .send(crate::devices::PiuPiuControl::Squirt { active: false })
             .await;
         self.send_cmd(ActuatorCommand::Stop).await;
     }
@@ -958,6 +964,7 @@ mod tests {
         let (pulse_tx, _pulse_rx) = mpsc::channel(16);
         let (impale_tx, _impale_rx) = mpsc::channel(16);
         let (coyote_tx, _coyote_rx) = mpsc::channel(16);
+        let (piupiu_tx, _piupiu_rx) = mpsc::channel(16);
         let (sensor_tx, _sensor_rx) = mpsc::channel(16);
         let (plumb_tx, _plumb_rx) = mpsc::channel(16);
         let (surge_tx, _surge_rx) = mpsc::channel(16);
@@ -974,6 +981,7 @@ mod tests {
             pulse: pulse_tx,
             impale: impale_tx,
             coyote: coyote_tx,
+            piupiu: piupiu_tx,
             sensors: sensor_tx,
             plumb: plumb_tx,
             surge: surge_tx,

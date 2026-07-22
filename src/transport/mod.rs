@@ -136,6 +136,7 @@ mod tests {
         let (pulse_tx, _pl) = mpsc::channel(16);
         let (impale_tx, _im) = mpsc::channel(16);
         let (coyote_tx, _co) = mpsc::channel(16);
+        let (piupiu_tx, _pp) = mpsc::channel(16);
         let (sensor_tx, _se) = mpsc::channel(16);
         let (plumb_tx, _pb) = mpsc::channel(16);
         let (surge_tx, _sg) = mpsc::channel(16);
@@ -152,6 +153,7 @@ mod tests {
             pulse: pulse_tx,
             impale: impale_tx,
             coyote: coyote_tx,
+            piupiu: piupiu_tx,
             sensors: sensor_tx,
             plumb: plumb_tx,
             surge: surge_tx,

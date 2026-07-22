@@ -64,6 +64,12 @@ async fn main() -> anyhow::Result<()> {
     app_state.max_depth_mm = rod::modbus::driver::load_max_depth()
         .map(|v| v.min(stroke_mm))
         .unwrap_or(stroke_mm);
+    // Persisted "autoconnect at boot" flags for the Coyote/PiuPiu BLE devices;
+    // config.toml `enable` is only the first-boot default (SPEC devices note).
+    let coyote_autoconnect = rod::devices::load_autoconnect("coyote", cfg.devices.coyote.enable);
+    let piupiu_autoconnect = rod::devices::load_autoconnect("piupiu", cfg.devices.piupiu.enable);
+    app_state.coyote_autoconnect = coyote_autoconnect;
+    app_state.piupiu_autoconnect = piupiu_autoconnect;
     let state = Arc::new(RwLock::new(app_state));
     let (cmd_tx, cmd_rx) = mpsc::channel(CMD_CHANNEL);
     // Modes/dispatcher send here; the motion shaper forwards to the driver,
@@ -87,6 +93,7 @@ async fn main() -> anyhow::Result<()> {
     let (trace_tx, trace_rx) = mpsc::channel(CTRL_CHANNEL);
     let (tempo_tx, tempo_rx) = mpsc::channel(CTRL_CHANNEL);
     let (coyote_tx, coyote_rx) = mpsc::channel(CTRL_CHANNEL);
+    let (piupiu_tx, piupiu_rx) = mpsc::channel(CTRL_CHANNEL);
     let (sensor_tx, sensor_rx) = mpsc::channel(CTRL_CHANNEL);
 
     // ── Modbus driver ──
@@ -136,12 +143,25 @@ async fn main() -> anyhow::Result<()> {
         }
     }
 
-    // ── External BLE actuators: DG-LAB Coyote (runs only if enabled) ──
-    if cfg.devices.coyote.enable {
+    // ── External BLE actuators (always spawn so the UI can pair on demand;
+    //    autoconnect at boot is driven by the persisted flag loaded above) ──
+    {
         let s = state.clone();
         let adapter = cfg.ble.adapter.clone();
         let ccfg = cfg.devices.coyote.clone();
         tokio::spawn(async move { rod::devices::coyote::run(s, coyote_rx, ccfg, adapter).await });
+        if coyote_autoconnect {
+            let _ = coyote_tx.send(rod::devices::CoyoteControl::Connect).await;
+        }
+    }
+    {
+        let s = state.clone();
+        let adapter = cfg.ble.adapter.clone();
+        let pcfg = cfg.devices.piupiu.clone();
+        tokio::spawn(async move { rod::devices::piupiu::run(s, piupiu_rx, pcfg, adapter).await });
+        if piupiu_autoconnect {
+            let _ = piupiu_tx.send(rod::devices::PiuPiuControl::Connect).await;
+        }
     }
 
     // ── Dispatcher (shared by all transports) ──
@@ -160,6 +180,7 @@ async fn main() -> anyhow::Result<()> {
         trace: trace_tx.clone(),
         tempo: tempo_tx.clone(),
         coyote: coyote_tx.clone(),
+        piupiu: piupiu_tx.clone(),
         sensors: sensor_tx.clone(),
     };
     let dispatcher = Dispatcher::new(

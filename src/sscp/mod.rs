@@ -52,6 +52,14 @@ pub struct CoyoteTelemetry {
 
 #[derive(Debug, Clone, Serialize)]
 #[serde(rename_all = "camelCase")]
+pub struct PiuPiuTelemetry {
+    pub connected: bool,
+    /// Squirt trigger currently held (repeating every 100 ms).
+    pub active: bool,
+}
+
+#[derive(Debug, Clone, Serialize)]
+#[serde(rename_all = "camelCase")]
 pub struct HeartRateTelemetry {
     pub connected: bool,
     /// Actively scanning/reconnecting (Connect requested, not yet subscribed).
@@ -261,6 +269,15 @@ pub struct Telemetry {
     /// Present only while a Coyote e-stim device is connected.
     #[serde(skip_serializing_if = "Option::is_none")]
     pub coyote: Option<CoyoteTelemetry>,
+
+    /// Present only while a PiuPiu lube launcher is connected.
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub piupiu: Option<PiuPiuTelemetry>,
+
+    /// Persisted "autoconnect at boot" setting — always present so the app
+    /// can render the Settings toggle even while disconnected.
+    pub coyote_autoconnect: bool,
+    pub piupiu_autoconnect: bool,
 
     /// Present only while the plumb program is active.
     #[serde(skip_serializing_if = "Option::is_none")]
@@ -492,6 +509,15 @@ pub fn build_telemetry(st: &AppState, cfg: &Config) -> Telemetry {
         None
     };
 
+    let piupiu = if st.piupiu.connected {
+        Some(PiuPiuTelemetry {
+            connected: st.piupiu.connected,
+            active: st.piupiu.active,
+        })
+    } else {
+        None
+    };
+
     Telemetry {
         position_mm: st.position_mm,
         position_pct,
@@ -524,6 +550,9 @@ pub fn build_telemetry(st: &AppState, cfg: &Config) -> Telemetry {
         pulse,
         impale,
         coyote,
+        piupiu,
+        coyote_autoconnect: st.coyote_autoconnect,
+        piupiu_autoconnect: st.piupiu_autoconnect,
         plumb,
         surge,
         tide,
@@ -669,6 +698,30 @@ pub enum Command {
     },
     /// Immediately zero both Coyote channels.
     CoyoteStop,
+    /// Start scanning for / connecting the Coyote (BLE central).
+    CoyoteConnect,
+    /// Disconnect the Coyote and stop scanning.
+    CoyoteDisconnect,
+    /// Persist the Coyote autoconnect-at-boot setting and connect/disconnect
+    /// to match it immediately.
+    SetCoyoteAutoconnect {
+        enabled: bool,
+    },
+    /// Hold (`true`) or release (`false`) the PiuPiu squirt trigger. Resend
+    /// `active: true` to keep "holding a shot"; the bridge repeats the
+    /// underlying command every 100 ms while held.
+    PiuPiuSquirt {
+        active: bool,
+    },
+    /// Start scanning for / connecting the PiuPiu lube launcher (BLE central).
+    PiuPiuConnect,
+    /// Disconnect the PiuPiu and stop scanning.
+    PiuPiuDisconnect,
+    /// Persist the PiuPiu autoconnect-at-boot setting and connect/disconnect
+    /// to match it immediately.
+    SetPiuPiuAutoconnect {
+        enabled: bool,
+    },
     /// Start scanning for / connecting a heart-rate sensor (BLE central).
     HrConnect,
     /// Disconnect the heart-rate sensor and stop scanning.

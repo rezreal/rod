@@ -73,6 +73,12 @@ export interface CoyoteState {
   following: boolean
 }
 
+export interface PiuPiuState {
+  connected: boolean
+  /** Squirt trigger currently held (repeating every 100 ms). */
+  active: boolean
+}
+
 export interface HeartRateState {
   connected: boolean
   /** Actively scanning/reconnecting (pairing requested, not yet subscribed). */
@@ -214,6 +220,11 @@ export interface Telemetry {
   pulse?: PulseState
   impale?: ImpaleState
   coyote?: CoyoteState
+  piupiu?: PiuPiuState
+  /** Persisted "autoconnect at boot" setting — always present, independent of
+   *  current connection, so Settings can render the toggle while disconnected. */
+  coyoteAutoconnect: boolean
+  piupiuAutoconnect: boolean
   plumb?: PlumbState
   surge?: SurgeState
   tide?: TideState
@@ -345,6 +356,25 @@ export interface CoyoteSetStrengthCommand { type: 'coyote_set_strength'; a: numb
 export interface CoyoteFollowCommand      { type: 'coyote_follow'; enable: boolean; scale: number }
 /** Immediately zero both Coyote channels. */
 export interface CoyoteStopCommand        { type: 'coyote_stop' }
+/** Start scanning for / connecting the Coyote (BLE central). */
+export interface CoyoteConnectCommand     { type: 'coyote_connect' }
+/** Disconnect the Coyote and stop scanning. */
+export interface CoyoteDisconnectCommand  { type: 'coyote_disconnect' }
+/** Persist the Coyote autoconnect-at-boot setting; bridge connects/disconnects
+ *  immediately to match. */
+export interface SetCoyoteAutoconnectCommand { type: 'set_coyote_autoconnect'; enabled: boolean }
+
+/** Hold (`true`) or release (`false`) the PiuPiu squirt trigger. Resend
+ *  `active: true` to keep "holding a shot"; the bridge repeats the underlying
+ *  command every 100 ms while held. */
+export interface PiuPiuSquirtCommand      { type: 'piupiu_squirt'; active: boolean }
+/** Start scanning for / connecting the PiuPiu lube launcher (BLE central). */
+export interface PiuPiuConnectCommand     { type: 'piupiu_connect' }
+/** Disconnect the PiuPiu and stop scanning. */
+export interface PiuPiuDisconnectCommand  { type: 'piupiu_disconnect' }
+/** Persist the PiuPiu autoconnect-at-boot setting; bridge connects/disconnects
+ *  immediately to match. */
+export interface SetPiuPiuAutoconnectCommand { type: 'set_piupiu_autoconnect'; enabled: boolean }
 
 /** Start scanning for / connecting a heart-rate sensor (BLE central, on the Pi). */
 export interface HrConnectCommand    { type: 'hr_connect' }
@@ -394,6 +424,13 @@ export type Command =
   | CoyoteSetStrengthCommand
   | CoyoteFollowCommand
   | CoyoteStopCommand
+  | CoyoteConnectCommand
+  | CoyoteDisconnectCommand
+  | SetCoyoteAutoconnectCommand
+  | PiuPiuSquirtCommand
+  | PiuPiuConnectCommand
+  | PiuPiuDisconnectCommand
+  | SetPiuPiuAutoconnectCommand
   | HrConnectCommand
   | HrDisconnectCommand
   | SetMaxDepthCommand

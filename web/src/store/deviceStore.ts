@@ -9,7 +9,7 @@
  * re-render when a status bit flips, and vice-versa.
  */
 import { create } from 'zustand'
-import type { ConnectionState, CoyoteState, CycleState, DeviceInfo, DrillState, EchoState, GameState, HampState, HdspState, HeartRateState, HspState, ImpaleState, LearnState, PlumbState, ProgramMode, PulseState, RampState, SurgeState, TempoState, TideState, TraceState, Telemetry } from '../types/sscp'
+import type { ConnectionState, CoyoteState, CycleState, DeviceInfo, DrillState, EchoState, GameState, HampState, HdspState, HeartRateState, HspState, ImpaleState, LearnState, PiuPiuState, PlumbState, ProgramMode, PulseState, RampState, SurgeState, TempoState, TideState, TraceState, Telemetry } from '../types/sscp'
 
 // ── Position slice ────────────────────────────────────────────────────────────
 
@@ -53,6 +53,10 @@ export interface StatusState {
   pulse: PulseState | undefined
   impale: ImpaleState | undefined
   coyote: CoyoteState | undefined
+  piupiu: PiuPiuState | undefined
+  /** Persisted "autoconnect at boot" setting — independent of connection. */
+  coyoteAutoconnect: boolean
+  piupiuAutoconnect: boolean
   plumb: PlumbState | undefined
   surge: SurgeState | undefined
   tide: TideState | undefined
@@ -117,6 +121,9 @@ const defaultStatus: StatusState = {
   pulse: undefined,
   impale: undefined,
   coyote: undefined,
+  piupiu: undefined,
+  coyoteAutoconnect: false,
+  piupiuAutoconnect: false,
   plumb: undefined,
   surge: undefined,
   tide: undefined,
@@ -233,6 +240,12 @@ export const useDeviceStore = create<DeviceStore>((set) => ({
         t.coyote?.strengthA   !== prev_s.coyote?.strengthA   ||
         t.coyote?.strengthB   !== prev_s.coyote?.strengthB   ||
         t.coyote?.maxStrength !== prev_s.coyote?.maxStrength ||
+        // PiuPiu (lube launcher) state
+        t.piupiu?.connected !== prev_s.piupiu?.connected ||
+        t.piupiu?.active    !== prev_s.piupiu?.active    ||
+        // Autoconnect settings
+        t.coyoteAutoconnect !== prev_s.coyoteAutoconnect ||
+        t.piupiuAutoconnect !== prev_s.piupiuAutoconnect ||
         // Plumb state
         t.plumb?.targetMm   !== prev_s.plumb?.targetMm   ||
         t.plumb?.handingOff !== prev_s.plumb?.handingOff ||
@@ -280,6 +293,9 @@ export const useDeviceStore = create<DeviceStore>((set) => ({
         pulse:            t.pulse,
         impale:           t.impale,
         coyote:           t.coyote,
+        piupiu:           t.piupiu,
+        coyoteAutoconnect: t.coyoteAutoconnect,
+        piupiuAutoconnect: t.piupiuAutoconnect,
         plumb:            t.plumb,
         surge:            t.surge,
         tide:             t.tide,

@@ -44,6 +44,10 @@ pub struct ModeControls {
     /// External e-stim device (DG-LAB Coyote); not a mode, threaded here so it
     /// rides the same control plumbing and `StopAll` reaches it.
     pub coyote: mpsc::Sender<crate::devices::CoyoteControl>,
+    /// External lube launcher (Hismith PiuPiu); not a mode, threaded here so
+    /// it rides the same control plumbing and `StopAll` reaches it (releases
+    /// a held squirt).
+    pub piupiu: mpsc::Sender<crate::devices::PiuPiuControl>,
     /// Heart-rate sensor (BLE central); threaded here so the UI can pair on
     /// demand (Connect/Disconnect). Not a mode.
     pub sensors: mpsc::Sender<crate::sensors::SensorControl>,

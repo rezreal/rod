@@ -600,6 +600,61 @@ mod imp {
                     .await
                     .map_err(|e| e.to_string())?;
             }
+            Command::CoyoteConnect => {
+                modes
+                    .coyote
+                    .send(crate::devices::CoyoteControl::Connect)
+                    .await
+                    .map_err(|e| e.to_string())?;
+            }
+            Command::CoyoteDisconnect => {
+                modes
+                    .coyote
+                    .send(crate::devices::CoyoteControl::Disconnect)
+                    .await
+                    .map_err(|e| e.to_string())?;
+            }
+            Command::SetCoyoteAutoconnect { enabled } => {
+                state.write().await.coyote_autoconnect = enabled;
+                crate::devices::persist_autoconnect("coyote", enabled);
+                let ctrl = if enabled {
+                    crate::devices::CoyoteControl::Connect
+                } else {
+                    crate::devices::CoyoteControl::Disconnect
+                };
+                modes.coyote.send(ctrl).await.map_err(|e| e.to_string())?;
+            }
+            Command::PiuPiuSquirt { active } => {
+                modes
+                    .piupiu
+                    .send(crate::devices::PiuPiuControl::Squirt { active })
+                    .await
+                    .map_err(|e| e.to_string())?;
+            }
+            Command::PiuPiuConnect => {
+                modes
+                    .piupiu
+                    .send(crate::devices::PiuPiuControl::Connect)
+                    .await
+                    .map_err(|e| e.to_string())?;
+            }
+            Command::PiuPiuDisconnect => {
+                modes
+                    .piupiu
+                    .send(crate::devices::PiuPiuControl::Disconnect)
+                    .await
+                    .map_err(|e| e.to_string())?;
+            }
+            Command::SetPiuPiuAutoconnect { enabled } => {
+                state.write().await.piupiu_autoconnect = enabled;
+                crate::devices::persist_autoconnect("piupiu", enabled);
+                let ctrl = if enabled {
+                    crate::devices::PiuPiuControl::Connect
+                } else {
+                    crate::devices::PiuPiuControl::Disconnect
+                };
+                modes.piupiu.send(ctrl).await.map_err(|e| e.to_string())?;
+            }
             Command::HrConnect => {
                 modes
                     .sensors

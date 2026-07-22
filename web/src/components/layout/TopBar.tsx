@@ -5,17 +5,20 @@ import { useTransport } from '../../transport/TransportProvider'
 import { describeAlarm } from '../../lib/alarmCodes'
 import { RemoteSharePanel } from '../remote/RemoteSharePanel'
 import { CoyoteControls } from '../devices/CoyoteControls'
+import { PiuPiuControls } from '../devices/PiuPiuControls'
 
 export function TopBar({ onSettings }: { onSettings: () => void }) {
   const connectionState = useDeviceStore((s) => s.connectionState)
   const deviceInfo      = useDeviceStore((s) => s.deviceInfo)
-  const { alarmCode, coyote } = useStatus()
+  const { alarmCode, coyote, piupiu } = useStatus()
   const { send, disconnect, role, shareInterrupted, clearShareInterrupted } = useTransport()
   const [showShare, setShowShare] = useState(false)
   const [showCoyote, setShowCoyote] = useState(false)
+  const [showPiupiu, setShowPiupiu] = useState(false)
   const [recovered, setRecovered] = useState(false)
 
   const coyoteConnected = coyote?.connected ?? false
+  const piupiuConnected = piupiu?.connected ?? false
 
   const hasAlarm  = alarmCode !== 0
   const isConnected = connectionState === 'connected'
@@ -113,6 +116,19 @@ export function TopBar({ onSettings }: { onSettings: () => void }) {
         </button>
       )}
 
+      {/* PiuPiu lube launcher (only when a device is connected) */}
+      {piupiuConnected && (
+        <button
+          onClick={() => setShowPiupiu(true)}
+          className="p-2 text-slate-400 hover:text-cyan-400 transition-colors rounded-lg"
+          aria-label="PiuPiu lube launcher controls"
+        >
+          <svg viewBox="0 0 24 24" className="w-5 h-5" fill="none" stroke="currentColor" strokeWidth={2}>
+            <path strokeLinecap="round" strokeLinejoin="round" d="M12 21.75c-3.314 0-6-2.686-6-6 0-3.71 6-11.25 6-11.25s6 7.54 6 11.25c0 3.314-2.686 6-6 6z" />
+          </svg>
+        </button>
+      )}
+
       {/* Settings */}
       <button
         onClick={onSettings}
@@ -148,6 +164,10 @@ export function TopBar({ onSettings }: { onSettings: () => void }) {
 
     {showCoyote && (
       <CoyoteControls onClose={() => setShowCoyote(false)} />
+    )}
+
+    {showPiupiu && (
+      <PiuPiuControls onClose={() => setShowPiupiu(false)} />
     )}
     </>
   )

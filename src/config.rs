@@ -36,6 +36,8 @@ pub struct Sensors {
 pub struct Devices {
     #[serde(default)]
     pub coyote: Coyote,
+    #[serde(default)]
+    pub piupiu: PiuPiu,
 }
 
 /// DG-LAB Coyote 3.0 e-stim driver config. SAFETY: `max_strength` caps output
@@ -73,6 +75,18 @@ impl Default for Coyote {
             follow_scale: default_coyote_follow_scale(),
         }
     }
+}
+
+/// Hismith PiuPiu lube launcher config. Autoconnect-at-boot only; see
+/// `src/devices/piupiu.rs`. Protocol has no tunable parameters beyond which
+/// device to match.
+#[derive(Debug, Clone, Default, Deserialize)]
+pub struct PiuPiu {
+    #[serde(default)]
+    pub enable: bool,
+    /// Name substring to match; empty = the default "Piupiu" name.
+    #[serde(default)]
+    pub name: String,
 }
 
 #[derive(Debug, Clone, Default, Deserialize)]
