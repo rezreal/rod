@@ -684,8 +684,10 @@ pub enum Command {
         mm: f32,
     },
     /// Set the max-depth ceiling (mm) for modes that press toward or hold a
-    /// single far point; clamped above comfortable depth and persisted.
-    /// Silently ignored while a program is running.
+    /// single far point; clamped to stroke and persisted. Authoritative: if
+    /// this lowers the ceiling below the current comfortable depth,
+    /// comfortable depth is pulled down to fit. Silently ignored while a
+    /// program is running.
     SetMaxDepth {
         mm: f32,
     },

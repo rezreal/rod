@@ -361,8 +361,9 @@ export interface HrDisconnectCommand { type: 'hr_disconnect' }
  *  below max depth and persists. Always accepted (silently clamped). */
 export interface SetComfortableDepthCommand { type: 'set_comfortable_depth'; mm: number }
 /** Set the max-depth ceiling (mm) for modes that press toward or hold a single
- *  far point; bridge clamps above comfortable depth and persists. Silently
- *  ignored while a program is running. */
+ *  far point; bridge clamps to stroke and persists. Authoritative: lowering
+ *  this below the current comfortable depth pulls comfortable depth down to
+ *  fit. Silently ignored while a program is running. */
 export interface SetMaxDepthCommand  { type: 'set_max_depth'; mm: number }
 
 export type Command =

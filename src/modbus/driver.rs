@@ -1087,12 +1087,28 @@ impl<B: ModbusBus> ModbusDriver<B> {
                         "ignoring max-depth change while a program is running"
                     );
                 } else {
-                    let min_allowed = (st.comfortable_depth_mm + MIN_DEPTH_GAP_MM).min(self.stroke_mm);
-                    let mm = mm.clamp(min_allowed, self.stroke_mm);
+                    let mm = mm.clamp(0.0, self.stroke_mm);
                     st.max_depth_mm = mm;
+                    // Max depth is authoritative: pull comfortable depth down
+                    // with it if it no longer fits below the new ceiling,
+                    // rather than blocking the max-depth change.
+                    let comfortable_ceiling = (mm - MIN_DEPTH_GAP_MM).max(0.0);
+                    let comfortable_pulled_down = st.comfortable_depth_mm > comfortable_ceiling;
+                    if comfortable_pulled_down {
+                        st.comfortable_depth_mm = comfortable_ceiling;
+                    }
+                    let comfortable_mm = st.comfortable_depth_mm;
                     drop(st);
                     persist_max_depth(mm);
-                    info!(max_depth_mm = mm, "max-depth set (program range rescaled)");
+                    if comfortable_pulled_down {
+                        persist_comfortable_depth(comfortable_mm);
+                    }
+                    info!(
+                        max_depth_mm = mm,
+                        comfortable_depth_mm = comfortable_mm,
+                        comfortable_pulled_down,
+                        "max-depth set (program range rescaled)"
+                    );
                 }
             }
         }
