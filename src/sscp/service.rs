@@ -614,6 +614,12 @@ mod imp {
                     .await
                     .map_err(|e| e.to_string())?;
             }
+            Command::SetComfortableDepth { mm } => {
+                bridge_tx
+                    .send(BridgeCommand::SetComfortableDepth { mm })
+                    .await
+                    .map_err(|e| e.to_string())?;
+            }
             Command::SetMaxDepth { mm } => {
                 bridge_tx
                     .send(BridgeCommand::SetMaxDepth { mm })

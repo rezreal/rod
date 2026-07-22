@@ -3,6 +3,7 @@ import { useSendCommand } from '../../hooks/useSendCommand'
 import { useStatus } from '../../hooks/useDeviceState'
 import { useDeviceStore } from '../../store/deviceStore'
 import { describeAlarm } from '../../lib/alarmCodes'
+import { MaxDepthControl } from '../dashboard/MaxDepthControl'
 import { RawTelemetry } from './RawTelemetry'
 
 interface Props {
@@ -100,6 +101,9 @@ export function MaintenancePanel({ onClose }: Props) {
                 </>
               ) : 'Calibrate (find contact)'}
             </button>
+
+            {/* Comfortable/max travel depth from the calibrated origin — global */}
+            <MaxDepthControl />
           </div>
 
           {/* Handy compatibility */}

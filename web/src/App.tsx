@@ -113,7 +113,7 @@ function Dashboard() {
                   <HealthRow />
                 </div>
 
-                {/* Global max-depth limit */}
+                {/* Global comfortable/max depth ceilings */}
                 <div className="mt-4">
                   <MaxDepthControl />
                 </div>

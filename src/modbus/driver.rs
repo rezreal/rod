@@ -22,7 +22,7 @@ use std::sync::Arc;
 use crate::config::{Config, MotionProfile};
 use crate::modbus::protocol::{self, Dss1, Dsse, MoveCommand, StatusBlock};
 use crate::rpc::{self, HdspPlayState, NotificationHdspChanged, RpcMessage};
-use crate::state::{ActuatorCommand, AppMode, AppState, BridgeCommand};
+use crate::state::{ActuatorCommand, AppMode, AppState, BridgeCommand, GameKind, MIN_DEPTH_GAP_MM};
 
 /// Inter-frame "silent interval" for Modbus RTU at 19200 baud (~2 ms).
 const SILENT_INTERVAL: Duration = Duration::from_millis(2);
@@ -472,24 +472,42 @@ impl<B: ModbusBus> ModbusDriver<B> {
             .map_err(|e| io::Error::new(io::ErrorKind::InvalidData, e.to_string()))
     }
 
-    /// Execute a single move (FC 0x10 @ 0x9900). Converts engineering units to
-    /// the controller's native 0.01-mm / 0.01-mm·s⁻¹ / 0.01-G scaling and clamps
-    /// to the hard controller limits, mirroring knock-rod's `moveTo`.
-    /// Map a program's target into the active max-depth range. Programs address
-    /// the full stroke; the max-depth ceiling rescales `[0, stroke] → [0,
-    /// max_depth]` so every mode oscillates between the entrance (0) and the set
-    /// max depth, scaled — not hard-clamped. `0.0` (unset) means full stroke (no
-    /// scaling). Calibration/peck-probe call `move_to`/`move_push` directly and
-    /// are intentionally *not* scaled (they work in real physical coordinates).
+    /// Map a program's target into its active depth ceiling. Programs address
+    /// the full stroke; the ceiling rescales `[0, stroke] → [0, ceiling]` so the
+    /// mode runs between the entrance (0) and the ceiling, scaled — not
+    /// hard-clamped. `0.0` (unset) means full stroke (no scaling). Calibration/
+    /// peck-probe call `move_to`/`move_push` directly and are intentionally
+    /// *not* scaled (they work in real physical coordinates).
+    ///
+    /// Which ceiling applies depends on the active mode: modes that oscillate
+    /// in a fixed zone (HAMP, cycle, pulse, plumb, surge, tide, trace, tempo,
+    /// and the fixed-zone games — edge & recover, gauntlet, deadman's climb,
+    /// stillness) use `comfortable_depth_mm`. Modes that press toward or hold a
+    /// single far point (ramp, HDSP, HSP, learn, drill, impale, echo, and the
+    /// Hold the Line game) use `max_depth_mm`.
     async fn depth_scaled(&mut self, pos_mm: f32) -> f32 {
-        let max_depth = self.state.read().await.max_depth_mm;
-        if max_depth > 0.0 && max_depth < self.stroke_mm {
-            pos_mm * (max_depth / self.stroke_mm)
+        let st = self.state.read().await;
+        let ceiling = match st.mode {
+            AppMode::Ramp
+            | AppMode::Hdsp
+            | AppMode::Hsp
+            | AppMode::Learn
+            | AppMode::Drill
+            | AppMode::Impale
+            | AppMode::Echo => st.max_depth_mm,
+            AppMode::Game if st.game.kind == Some(GameKind::HoldTheLine) => st.max_depth_mm,
+            _ => st.comfortable_depth_mm,
+        };
+        if ceiling > 0.0 && ceiling < self.stroke_mm {
+            pos_mm * (ceiling / self.stroke_mm)
         } else {
             pos_mm
         }
     }
 
+    /// Execute a single move (FC 0x10 @ 0x9900). Converts engineering units to
+    /// the controller's native 0.01-mm / 0.01-mm·s⁻¹ / 0.01-G scaling and clamps
+    /// to the hard controller limits, mirroring knock-rod's `moveTo`.
     pub async fn move_to(
         &mut self,
         pos_mm: f32,
@@ -1048,11 +1066,34 @@ impl<B: ModbusBus> ModbusDriver<B> {
                 debug!(?regs, settle_ms, ok = r.is_ok(), "raw test_move");
                 let _ = reply.send(r);
             }
+            BridgeCommand::SetComfortableDepth { mm } => {
+                let mut st = self.state.write().await;
+                let max_allowed = (st.max_depth_mm - MIN_DEPTH_GAP_MM).max(0.0);
+                let mm = mm.clamp(0.0, max_allowed);
+                st.comfortable_depth_mm = mm;
+                drop(st);
+                persist_comfortable_depth(mm);
+                info!(
+                    comfortable_depth_mm = mm,
+                    "comfortable-depth set (oscillating-mode range rescaled)"
+                );
+            }
             BridgeCommand::SetMaxDepth { mm } => {
-                let mm = mm.clamp(0.0, self.stroke_mm);
-                self.state.write().await.max_depth_mm = mm;
-                persist_max_depth(mm);
-                info!(max_depth_mm = mm, "max-depth set (program range rescaled)");
+                let mut st = self.state.write().await;
+                if st.program_running() {
+                    warn!(
+                        requested_mm = mm,
+                        mode = ?st.mode,
+                        "ignoring max-depth change while a program is running"
+                    );
+                } else {
+                    let min_allowed = (st.comfortable_depth_mm + MIN_DEPTH_GAP_MM).min(self.stroke_mm);
+                    let mm = mm.clamp(min_allowed, self.stroke_mm);
+                    st.max_depth_mm = mm;
+                    drop(st);
+                    persist_max_depth(mm);
+                    info!(max_depth_mm = mm, "max-depth set (program range rescaled)");
+                }
             }
         }
     }
@@ -1158,6 +1199,25 @@ pub fn load_max_depth() -> Option<f32> {
 fn persist_max_depth(mm: f32) {
     if let Err(e) = std::fs::write(MAX_DEPTH_FILE, format!("{mm}")) {
         warn!(error = %e, "failed to persist max-depth; value is in-memory only");
+    }
+}
+
+/// Sidecar file holding the persisted comfortable-depth ceiling (mm).
+const COMFORTABLE_DEPTH_FILE: &str = "comfortable-depth-mm";
+
+/// Read the persisted comfortable-depth ceiling (mm), if any. Returns `None`
+/// when the file is absent or unparseable.
+pub fn load_comfortable_depth() -> Option<f32> {
+    std::fs::read_to_string(COMFORTABLE_DEPTH_FILE)
+        .ok()
+        .and_then(|s| s.trim().parse::<f32>().ok())
+        .filter(|v| v.is_finite() && *v > 0.0)
+}
+
+/// Persist the comfortable-depth ceiling (mm) so it survives a reboot. Best-effort.
+fn persist_comfortable_depth(mm: f32) {
+    if let Err(e) = std::fs::write(COMFORTABLE_DEPTH_FILE, format!("{mm}")) {
+        warn!(error = %e, "failed to persist comfortable-depth; value is in-memory only");
     }
 }
 

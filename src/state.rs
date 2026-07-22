@@ -10,6 +10,10 @@ use tokio::sync::oneshot;
 use crate::config::MotionProfile;
 use crate::rpc::{HampPlayState, HspPlayState, Point};
 
+/// Minimum enforced gap (mm) between `comfortable_depth_mm` and `max_depth_mm`
+/// — comfortable depth is always clamped at least this far below max depth.
+pub const MIN_DEPTH_GAP_MM: f32 = 5.0;
+
 /// Coarse operating mode tag. Mirrors the on-device `Mode` enum for the subset
 /// the bridge implements; per-mode runtime lives in dedicated fields below.
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
@@ -506,11 +510,22 @@ pub struct AppState {
     /// Absolute position (mm) where the last contact calibration sensed the
     /// work-piece. `None` until a calibration has succeeded.
     pub work_origin_mm: Option<f32>,
-    /// Global max-depth (mm): programs address the full stroke, and every
-    /// program move is rescaled `[0, stroke] → [0, max_depth]` so each mode runs
-    /// between the entrance (0) and this depth — scaled, not hard-clamped.
-    /// 0.0 means "unset → full stroke". Set at boot (from the persisted value or
-    /// stroke) and via `BridgeCommand::SetMaxDepth`. Calibration is not scaled.
+    /// Depth ceiling for oscillating modes (mm): HAMP, cycle, pulse, plumb,
+    /// surge, tide, trace, tempo, and the fixed-zone games (edge & recover,
+    /// gauntlet, deadman's climb, stillness) all rescale `[0, stroke] → [0,
+    /// comfortable_depth]` so they run between the entrance (0) and this depth
+    /// — scaled, not hard-clamped. Always kept at least [`MIN_DEPTH_GAP_MM`]
+    /// below `max_depth_mm`. 0.0 means "unset → full stroke". Set at boot and
+    /// via `BridgeCommand::SetComfortableDepth`.
+    pub comfortable_depth_mm: f32,
+    /// Depth ceiling for modes that press toward or hold a single far point
+    /// rather than oscillating in a fixed zone: ramp, HDSP, HSP, learn, drill,
+    /// impale, echo, and the Hold the Line game rescale into `[0, max_depth]`
+    /// the same way. 0.0 means "unset → full stroke". Set at boot (from the
+    /// persisted value or stroke) and via `BridgeCommand::SetMaxDepth` — which
+    /// is refused while a program is running (see `AppState::program_running`)
+    /// so it can't shift a program's own range out from under it mid-run.
+    /// Calibration is not scaled by either ceiling.
     pub max_depth_mm: f32,
 
     pub uid: String,
@@ -574,6 +589,7 @@ impl AppState {
             hand_switch: false,
             calibrating: false,
             work_origin_mm: None,
+            comfortable_depth_mm: 0.0,
             max_depth_mm: 0.0,
             uid,
             connection_key: None,
@@ -610,6 +626,13 @@ impl AppState {
             self.mode = mode;
         }
         self.mode_session_id
+    }
+
+    /// True once an interactive/automatic program is active. `max_depth_mm`
+    /// changes are refused while this holds, so a running program's rescale
+    /// target can't shift out from under it mid-run.
+    pub fn program_running(&self) -> bool {
+        !matches!(self.mode, AppMode::Idle | AppMode::Homing | AppMode::Uninitialized)
     }
 }
 
@@ -719,8 +742,13 @@ pub enum BridgeCommand {
         settle_ms: u64,
         reply: oneshot::Sender<Result<Vec<u16>, String>>,
     },
-    /// Set the global max-depth (mm). Programs' moves are rescaled into
-    /// `[0, max_depth]`, so all modes run between the entrance and this depth.
-    /// Clamped to `[0, stroke]` and persisted across reboots. Fire-and-forget.
+    /// Set the comfortable depth (mm) for oscillating modes. Clamped to
+    /// `[0, max_depth - MIN_DEPTH_GAP_MM]` and persisted across reboots.
+    /// Fire-and-forget; always succeeds (clamped rather than rejected).
+    SetComfortableDepth { mm: f32 },
+    /// Set the max depth (mm) for modes that press toward or hold a single far
+    /// point. Clamped to `[comfortable_depth + MIN_DEPTH_GAP_MM, stroke]` and
+    /// persisted across reboots. Fire-and-forget, but silently ignored (with a
+    /// log warning) while `AppState::program_running` is true.
     SetMaxDepth { mm: f32 },
 }

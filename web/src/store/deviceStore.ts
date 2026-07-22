@@ -39,6 +39,7 @@ export interface StatusState {
   motorVoltageLow: boolean
   safetySpeed: boolean
   handSwitch: boolean
+  comfortableDepthMm: number
   maxDepthMm: number
   workOriginMm: number | undefined
   hamp:  HampState  | undefined
@@ -103,6 +104,7 @@ const defaultStatus: StatusState = {
   motorVoltageLow: false,
   safetySpeed: false,
   handSwitch: false,
+  comfortableDepthMm: 0,
   maxDepthMm: 0,
   workOriginMm: undefined,
   hamp:  undefined,
@@ -176,6 +178,7 @@ export const useDeviceStore = create<DeviceStore>((set) => ({
         t.pushActive    !== prev_s.pushActive     ||
         t.brakeReleased !== prev_s.brakeReleased  ||
         t.handSwitch    !== prev_s.handSwitch     ||
+        t.comfortableDepthMm !== prev_s.comfortableDepthMm ||
         t.maxDepthMm    !== prev_s.maxDepthMm     ||
         t.workOriginMm  !== prev_s.workOriginMm   ||
         t.safetySpeed   !== prev_s.safetySpeed    ||
@@ -266,6 +269,7 @@ export const useDeviceStore = create<DeviceStore>((set) => ({
         motorVoltageLow:  t.motorVoltageLow,
         safetySpeed:      t.safetySpeed,
         handSwitch:       t.handSwitch,
+        comfortableDepthMm: t.comfortableDepthMm,
         maxDepthMm:       t.maxDepthMm,
         workOriginMm:     t.workOriginMm,
         hamp:             newHamp,

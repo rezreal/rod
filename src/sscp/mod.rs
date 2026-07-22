@@ -214,10 +214,14 @@ pub struct Telemetry {
     pub safety_speed: bool,
     /// Hand/palm switch on the controller's PIO input (DIPM bit 0).
     pub hand_switch: bool,
-    /// Global max-depth (mm): program moves are rescaled into [0, max_depth].
+    /// Comfortable-depth ceiling (mm) for oscillating modes; see
+    /// `AppState::comfortable_depth_mm`.
+    pub comfortable_depth_mm: f32,
+    /// Max-depth ceiling (mm) for modes that press toward or hold a single far
+    /// point; see `AppState::max_depth_mm`. Locked while a program is running.
     pub max_depth_mm: f32,
     /// Work-piece origin (mm) from the last calibration, if any — used to offer
-    /// a "use calibrated contact" quick-set for max-depth.
+    /// a "use calibrated contact" quick-set for comfortable depth.
     #[serde(skip_serializing_if = "Option::is_none")]
     pub work_origin_mm: Option<f32>,
 
@@ -511,6 +515,7 @@ pub fn build_telemetry(st: &AppState, cfg: &Config) -> Telemetry {
         motor_voltage_low: st.motor_voltage_low,
         safety_speed: st.safety_speed,
         hand_switch: st.hand_switch,
+        comfortable_depth_mm: st.comfortable_depth_mm,
         max_depth_mm: st.max_depth_mm,
         work_origin_mm: st.work_origin_mm,
         mode,
@@ -673,7 +678,14 @@ pub enum Command {
     HrConnect,
     /// Disconnect the heart-rate sensor and stop scanning.
     HrDisconnect,
-    /// Set the global max-depth (mm); rescales program range, clamped + persisted.
+    /// Set the comfortable-depth ceiling (mm) for oscillating modes; clamped
+    /// below max depth and persisted. Always accepted (silently clamped).
+    SetComfortableDepth {
+        mm: f32,
+    },
+    /// Set the max-depth ceiling (mm) for modes that press toward or hold a
+    /// single far point; clamped above comfortable depth and persisted.
+    /// Silently ignored while a program is running.
     SetMaxDepth {
         mm: f32,
     },
