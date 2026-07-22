@@ -2,6 +2,7 @@ import { useState } from 'react'
 import { useSendCommand } from '../../hooks/useSendCommand'
 import { useStatus } from '../../hooks/useDeviceState'
 import { useDeviceStore } from '../../store/deviceStore'
+import { usePreferencesStore } from '../../store/preferencesStore'
 import { describeAlarm } from '../../lib/alarmCodes'
 import { RawTelemetry } from './RawTelemetry'
 
@@ -15,6 +16,8 @@ export function MaintenancePanel({ onClose }: Props) {
   const { mode, alarmCode } = useStatus()
   const send = useSendCommand()
   const [showDiag, setShowDiag] = useState(false)
+  const audioFeedbackEnabled    = usePreferencesStore((s) => s.audioFeedbackEnabled)
+  const setAudioFeedbackEnabled = usePreferencesStore((s) => s.setAudioFeedbackEnabled)
 
   const isConnected = connectionState === 'connected'
   const isHoming    = mode === 'homing'
@@ -113,6 +116,29 @@ export function MaintenancePanel({ onClose }: Props) {
               <p className="text-xs font-medium text-slate-400">Handy compatibility</p>
               <p className="text-xs text-slate-600 mt-0.5">Available on separate BLE service</p>
             </div>
+          </div>
+
+          {/* Preferences */}
+          <div className="flex items-center justify-between gap-3 p-4 bg-slate-800/50 rounded-xl border border-slate-700">
+            <div>
+              <h3 className="text-sm font-semibold text-slate-200">Audio feedback</h3>
+              <p className="text-xs text-slate-500 mt-1">
+                Plays a sound for input needed, success, hardware faults, and mistakes.
+              </p>
+            </div>
+            <button
+              onClick={() => setAudioFeedbackEnabled(!audioFeedbackEnabled)}
+              aria-pressed={audioFeedbackEnabled}
+              className={`relative shrink-0 w-11 h-6 rounded-full transition-colors ${
+                audioFeedbackEnabled ? 'bg-cyan-600' : 'bg-slate-700'
+              }`}
+            >
+              <span
+                className={`absolute top-0.5 left-0.5 w-5 h-5 bg-white rounded-full transition-transform ${
+                  audioFeedbackEnabled ? 'translate-x-5' : ''
+                }`}
+              />
+            </button>
           </div>
 
           {/* Diagnostics toggle */}

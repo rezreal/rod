@@ -15,6 +15,7 @@ import { AlarmBanner } from './components/dashboard/AlarmBanner'
 import { ProgramBadge } from './components/dashboard/ProgramBadge'
 import { ProgramDrawer } from './components/programs/ProgramDrawer'
 import { MaintenancePanel } from './components/maintenance/MaintenancePanel'
+import { AudioFeedback } from './components/AudioFeedback'
 import { fmtMm, fmtPct } from './lib/units'
 
 function Dashboard() {
@@ -30,6 +31,8 @@ function Dashboard() {
 
   return (
     <div className="flex flex-col h-full">
+      <AudioFeedback />
+
       <TopBar onSettings={() => setShowMaintenance(true)} />
 
       {/* Guest-control safety banner (host side) — take-back always reachable */}

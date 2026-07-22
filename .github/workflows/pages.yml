@@ -41,15 +41,19 @@ jobs:
         with:
           enablement: true
 
+      - uses: pnpm/action-setup@v4
+        with:
+          version: 11.15.1
+
       - uses: actions/setup-node@v4
         with:
           node-version: 22
-          cache: npm
-          cache-dependency-path: web/package-lock.json
+          cache: pnpm
+          cache-dependency-path: web/pnpm-lock.yaml
 
-      - run: npm ci
+      - run: pnpm install --frozen-lockfile
 
-      - run: npm run build
+      - run: pnpm run build
         env:
           BASE_PATH: /${{ github.event.repository.name }}/
 
