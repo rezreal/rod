@@ -2,9 +2,9 @@
 //!
 //! Machine is still until the user taps out a rhythm with the hand switch.
 //! Each tap (short press < stop_hold_ms) records the inter-tap interval as the
-//! period; oscillation begins once a period is established. A long hold
-//! (≥ stop_hold_ms) stops oscillation and clears the tempo. If taps cease for
-//! more than `timeout_periods × period_ms`, oscillation auto-stops.
+//! period; oscillation begins once a period is established and continues
+//! indefinitely. A long hold (≥ stop_hold_ms) stops oscillation and clears
+//! the tempo.
 //!
 //! Stroke timing:
 //!   speed = stroke_span / (period_ms / 2 / 1000)   clamped to max_velocity_mm_s
@@ -36,7 +36,6 @@ pub struct TempoTask {
     depth_mm: f32,
     accel_g: f32,
     stop_hold_ms: u64,
-    timeout_periods: f32,
     profile: MotionProfile,
 }
 
@@ -56,7 +55,6 @@ impl TempoTask {
             depth_mm: cfg.actuator.tempo.depth_mm,
             accel_g: cfg.actuator.tempo.accel_g,
             stop_hold_ms: cfg.actuator.tempo.stop_hold_ms,
-            timeout_periods: cfg.actuator.tempo.timeout_periods,
             profile: cfg.motion_profile().unwrap_or(MotionProfile::Trapezoid),
         }
     }
@@ -231,25 +229,6 @@ impl TempoTask {
                     let half_period = Duration::from_millis(period_ms / 2) + REVERSAL_MARGIN;
                     out = !out;
                     next = Some(Instant::now() + half_period);
-
-                    // Auto-stop check: if taps have ceased for > timeout_periods × period_ms.
-                    if let Some(tap_instant) = last_tap {
-                        let elapsed = Instant::now().duration_since(tap_instant);
-                        let timeout =
-                            Duration::from_millis((period_ms as f32 * self.timeout_periods) as u64);
-                        if elapsed > timeout {
-                            info!("tempo: auto-stop — taps ceased");
-                            let _ = self.cmd_tx.send(ActuatorCommand::Stop).await;
-                            next = None;
-                            period_ms = 0;
-                            last_tap = None;
-                            out = false;
-                            {
-                                let mut st = self.state.write().await;
-                                st.tempo.period_ms = 0;
-                            }
-                        }
-                    }
                 }
             }
         }
@@ -287,7 +266,6 @@ mod tests {
             depth_mm         = 80.0
             accel_g          = 0.2
             stop_hold_ms     = 1000
-            timeout_periods  = 2.0
         "#,
         )
         .unwrap()
@@ -467,10 +445,10 @@ mod tests {
         let _ = h.await;
     }
 
-    /// After establishing a tempo, if no taps arrive for > timeout_periods × period_ms,
-    /// oscillation should auto-stop.
+    /// After establishing a tempo, oscillation should keep running indefinitely
+    /// even if no further taps arrive — only a long hold stops it.
     #[tokio::test(start_paused = true)]
-    async fn auto_stop_when_taps_cease() {
+    async fn oscillation_continues_without_further_taps() {
         let cfg = cfg();
         let (task, state, mut cmd_rx) = make(&cfg);
         {
@@ -508,63 +486,40 @@ mod tests {
         let _first = cmd_rx.recv().await.unwrap();
         assert!(matches!(_first, ActuatorCommand::MoveTo { .. }));
 
-        // Advance 3 × period_ms (1500ms) without tapping — auto-stop should trigger.
-        // Each half-period fires a stroke; timeout_periods=2.0 so timeout = 1000ms
-        // from last_tap. After 3 half-periods (1500ms total), well past timeout.
-        //
-        // We need to advance past timeout from last_tap. Last tap was at roughly
-        // T=800ms (100+100+300+100+100+100 = 800ms). Timeout = 500*2 = 1000ms.
-        // So auto-stop should fire after T=1800ms. Advance in half-period steps.
-        tokio::time::advance(Duration::from_millis(260)).await; // return stroke
-        let _second = cmd_rx.recv().await.unwrap();
-        tokio::time::advance(Duration::from_millis(260)).await; // outward stroke
-        let _third = cmd_rx.recv().await.unwrap();
-        tokio::time::advance(Duration::from_millis(260)).await; // return stroke — this one should auto-stop
-
-        // The auto-stop logic fires during the stroke arm, which may emit a MoveTo
-        // first then a Stop. Drain commands looking for the Stop.
-        let mut found_stop = false;
-        // Drain up to a few commands.
-        for _ in 0..5 {
-            match cmd_rx.try_recv() {
-                Ok(ActuatorCommand::Stop) => {
-                    found_stop = true;
-                    break;
-                }
-                Ok(_) => {} // may be a MoveTo emitted before auto-stop check
-                Err(_) => break,
-            }
-        }
-        // If not yet found, advance one more step and drain.
-        if !found_stop {
+        // Advance many periods with no further taps — oscillation should keep
+        // firing strokes the whole time, never issuing an unrequested Stop.
+        for _ in 0..10 {
             tokio::time::advance(Duration::from_millis(260)).await;
-            for _ in 0..5 {
-                match cmd_rx.try_recv() {
-                    Ok(ActuatorCommand::Stop) => {
-                        found_stop = true;
-                        break;
-                    }
-                    Ok(_) => {}
-                    Err(_) => break,
-                }
-            }
+            let cmd = cmd_rx.recv().await.unwrap();
+            assert!(
+                matches!(cmd, ActuatorCommand::MoveTo { .. }),
+                "expected oscillation to continue without taps, got {cmd:?}"
+            );
         }
-
-        assert!(
-            found_stop,
-            "expected auto-stop after taps ceased for > 2× period"
+        assert_eq!(
+            state.read().await.tempo.period_ms,
+            500,
+            "period should remain established without taps"
         );
 
-        // After auto-stop: no further MoveTo commands.
-        tokio::time::advance(Duration::from_millis(1000)).await;
-        let mut extra_move = false;
-        while let Ok(cmd) = cmd_rx.try_recv() {
-            if matches!(cmd, ActuatorCommand::MoveTo { .. }) {
-                extra_move = true;
-                break;
-            }
+        // A long hold still stops it.
+        state.write().await.hand_switch = true;
+        for _ in 0..11 {
+            tokio::time::advance(Duration::from_millis(100)).await;
+            tokio::task::yield_now().await;
         }
-        assert!(!extra_move, "no MoveTo should fire after auto-stop");
+        state.write().await.hand_switch = false;
+        tokio::time::advance(Duration::from_millis(100)).await;
+        tokio::task::yield_now().await;
+
+        let stop_cmd = loop {
+            let cmd = cmd_rx.recv().await.unwrap();
+            if matches!(cmd, ActuatorCommand::Stop) {
+                break cmd;
+            }
+        };
+        assert!(matches!(stop_cmd, ActuatorCommand::Stop));
+        assert_eq!(state.read().await.tempo.period_ms, 0);
 
         ctrl_tx.send(TempoControl::Stop).await.unwrap();
         let _ = cmd_rx.recv().await;

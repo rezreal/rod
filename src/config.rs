@@ -374,9 +374,6 @@ pub struct Tempo {
     /// Hold duration to stop oscillation (ms).
     #[serde(default = "default_tempo_stop_hold_ms")]
     pub stop_hold_ms: u64,
-    /// Auto-stop after this many periods without a new tap.
-    #[serde(default = "default_tempo_timeout_periods")]
-    pub timeout_periods: f32,
 }
 
 impl Default for Tempo {
@@ -387,7 +384,6 @@ impl Default for Tempo {
             depth_mm: default_tempo_depth(),
             accel_g: default_tempo_accel_g(),
             stop_hold_ms: default_tempo_stop_hold_ms(),
-            timeout_periods: default_tempo_timeout_periods(),
         }
     }
 }
@@ -1103,9 +1099,6 @@ fn default_tempo_accel_g() -> f32 {
 }
 fn default_tempo_stop_hold_ms() -> u64 {
     1000
-}
-fn default_tempo_timeout_periods() -> f32 {
-    2.0
 }
 
 fn default_ramp_min_velocity() -> f32 {

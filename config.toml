@@ -161,13 +161,12 @@ accel_g          = 0.15
 
 [actuator.tempo]
 # Tap out a rhythm with the switch to set the stroke period; a long hold stops
-# oscillation, and taps ceasing for a few periods auto-stops it.
+# oscillation.
 min_period_ms   = 400    # fastest tapped tempo
 max_period_ms   = 4000   # slowest tapped tempo
 depth_mm        = 80.0   # stroke depth above work origin
 accel_g         = 0.2
 stop_hold_ms    = 1000   # hold this long to stop
-timeout_periods = 2.0    # auto-stop after this many periods without a tap
 
 [actuator.calibration]
 # Soft-touch ("push-to-contact") calibration: home, then crawl forward at
