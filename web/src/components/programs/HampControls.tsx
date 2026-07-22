@@ -168,8 +168,9 @@ export function HampControls() {
 
   const running  = hamp?.running  ?? false
   const velocity = hamp?.velocity ?? 0.5
-  const zoneMin  = hamp?.zoneMin  ?? 0.05
-  const zoneMax  = hamp?.zoneMax  ?? 0.95
+  // 0.0 = calibrated origin, 1.0 = comfortable depth — see HampTask::stroke.
+  const zoneMin  = hamp?.zoneMin  ?? 0.0
+  const zoneMax  = hamp?.zoneMax  ?? 1.0
   // Handy-originated commands arrive without softness → bridge defaults to 0.5 (medium)
   const softness = hamp?.softness ?? 0.5
 
