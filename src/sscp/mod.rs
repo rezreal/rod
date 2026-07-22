@@ -679,7 +679,8 @@ pub enum Command {
     /// Disconnect the heart-rate sensor and stop scanning.
     HrDisconnect,
     /// Set the comfortable-depth ceiling (mm) for oscillating modes; clamped
-    /// below max depth and persisted. Always accepted (silently clamped).
+    /// to at most max depth (may equal it) and persisted. Always accepted
+    /// (silently clamped).
     SetComfortableDepth {
         mm: f32,
     },

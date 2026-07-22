@@ -197,8 +197,8 @@ export interface Telemetry {
   /** Hand/palm switch on the controller's PIO input (DIPM bit 0). */
   handSwitch: boolean
   /** Comfortable-depth ceiling (mm) for oscillating modes (HAMP, cycle, pulse,
-   *  plumb, surge, tide, trace, tempo, and the fixed-zone games). Always kept
-   *  below maxDepthMm. */
+   *  plumb, surge, tide, trace, tempo, and the fixed-zone games). Never
+   *  exceeds maxDepthMm (may equal it). */
   comfortableDepthMm: number
   /** Max-depth ceiling (mm) for modes that press toward or hold a single far
    *  point (ramp, HDSP, HSP, learn, drill, impale, echo, Hold the Line).
@@ -358,7 +358,8 @@ export interface HrConnectCommand    { type: 'hr_connect' }
 export interface HrDisconnectCommand { type: 'hr_disconnect' }
 
 /** Set the comfortable-depth ceiling (mm) for oscillating modes; bridge clamps
- *  below max depth and persists. Always accepted (silently clamped). */
+ *  to at most max depth (may equal it) and persists. Always accepted
+ *  (silently clamped). */
 export interface SetComfortableDepthCommand { type: 'set_comfortable_depth'; mm: number }
 /** Set the max-depth ceiling (mm) for modes that press toward or hold a single
  *  far point; bridge clamps to stroke and persists. Authoritative: lowering

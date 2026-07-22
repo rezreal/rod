@@ -22,7 +22,7 @@ use std::sync::Arc;
 use crate::config::{Config, MotionProfile};
 use crate::modbus::protocol::{self, Dss1, Dsse, MoveCommand, StatusBlock};
 use crate::rpc::{self, HdspPlayState, NotificationHdspChanged, RpcMessage};
-use crate::state::{ActuatorCommand, AppMode, AppState, BridgeCommand, GameKind, MIN_DEPTH_GAP_MM};
+use crate::state::{ActuatorCommand, AppMode, AppState, BridgeCommand, GameKind};
 
 /// Inter-frame "silent interval" for Modbus RTU at 19200 baud (~2 ms).
 const SILENT_INTERVAL: Duration = Duration::from_millis(2);
@@ -1068,8 +1068,7 @@ impl<B: ModbusBus> ModbusDriver<B> {
             }
             BridgeCommand::SetComfortableDepth { mm } => {
                 let mut st = self.state.write().await;
-                let max_allowed = (st.max_depth_mm - MIN_DEPTH_GAP_MM).max(0.0);
-                let mm = mm.clamp(0.0, max_allowed);
+                let mm = mm.clamp(0.0, st.max_depth_mm);
                 st.comfortable_depth_mm = mm;
                 drop(st);
                 persist_comfortable_depth(mm);
@@ -1090,12 +1089,12 @@ impl<B: ModbusBus> ModbusDriver<B> {
                     let mm = mm.clamp(0.0, self.stroke_mm);
                     st.max_depth_mm = mm;
                     // Max depth is authoritative: pull comfortable depth down
-                    // with it if it no longer fits below the new ceiling,
-                    // rather than blocking the max-depth change.
-                    let comfortable_ceiling = (mm - MIN_DEPTH_GAP_MM).max(0.0);
-                    let comfortable_pulled_down = st.comfortable_depth_mm > comfortable_ceiling;
+                    // with it if it now exceeds the new ceiling (comfortable
+                    // may equal max depth, just never exceed it), rather than
+                    // blocking the max-depth change.
+                    let comfortable_pulled_down = st.comfortable_depth_mm > mm;
                     if comfortable_pulled_down {
-                        st.comfortable_depth_mm = comfortable_ceiling;
+                        st.comfortable_depth_mm = mm;
                     }
                     let comfortable_mm = st.comfortable_depth_mm;
                     drop(st);
