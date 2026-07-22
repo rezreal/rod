@@ -35,7 +35,7 @@ jobs:
             build-essential gcc g++ make libncurses5-dev \
             git rsync bc patch gzip bzip2 xz-utils \
             libssl-dev unzip wget cpio \
-            file device-mapper
+            file libdevmapper-dev
 
       - name: Cache Buildroot downloads
         uses: actions/cache@v4
