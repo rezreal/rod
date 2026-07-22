@@ -139,6 +139,26 @@ pub enum CycleControl {
     Stop,
 }
 
+/// Pre-start parameter overrides for an endurance game, set by the player
+/// before pressing Start (see `web/src/components/programs/GamesControls.tsx`).
+/// Every field defaults to `None`, which reproduces the game's original
+/// endless behaviour exactly — a target only takes effect once the player
+/// opts in.
+#[derive(Debug, Clone, Copy, PartialEq, Default)]
+pub struct GameStartParams {
+    /// Edge & Recover / Gauntlet: win (and end the round) once this many
+    /// edges / completed intervals are reached. `None` plays on until Stop
+    /// (Edge & Recover) or a no-show (Gauntlet), as before.
+    pub reps: Option<u32>,
+    /// Stillness: win (and end the round) once this many seconds have been
+    /// held within tolerance. `None` plays until the last life is spent, as
+    /// before.
+    pub duration_s: Option<f32>,
+    /// Stillness: override the configured drift tolerance (mm) for this
+    /// round — smaller is more sensitive. `None` uses the configured default.
+    pub tolerance_mm: Option<f32>,
+}
+
 /// Control messages to the endurance-games task. The SSCP handler sends these;
 /// the dispatcher also sends [`GameControl::Stop`] on mode-switch / stop-all.
 #[derive(Debug, Clone, PartialEq)]
@@ -146,7 +166,10 @@ pub enum GameControl {
     /// Start a game by [`GameKind`](crate::state::GameKind). Play doesn't
     /// begin immediately — the task arms and waits for the triple-tap ready
     /// signal (see [`GameControl::HardwareTap`]).
-    Start { kind: crate::state::GameKind },
+    Start {
+        kind: crate::state::GameKind,
+        params: GameStartParams,
+    },
     /// Button state heartbeat from the client. `down = true` is resent every
     /// ~50 ms while held (deadman); `down = false` (or a heartbeat gap) means
     /// released. Each game interprets hold/release per its own rules.

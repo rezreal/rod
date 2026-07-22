@@ -653,6 +653,18 @@ pub enum Command {
     /// Start an endurance game by kind (snake_case, e.g. "edge_recover").
     GameStart {
         kind: String,
+        /// Edge & Recover / Gauntlet: win at this many edges / completed
+        /// intervals. Omit for endless play (the pre-existing default).
+        reps: Option<u32>,
+        /// Stillness: win after holding this many seconds. Omit for endless
+        /// play (the pre-existing default — ends only when lives run out).
+        #[serde(alias = "durationS")]
+        duration_s: Option<f32>,
+        /// Stillness: override the configured drift tolerance (mm) for this
+        /// round — smaller is more sensitive. Omit to use the configured
+        /// default.
+        #[serde(alias = "toleranceMm")]
+        tolerance_mm: Option<f32>,
     },
     /// Deadman button state for the active game. Resend `down: true` every
     /// ~50 ms while held; send `down: false` on release.
