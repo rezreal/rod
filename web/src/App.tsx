@@ -1,6 +1,7 @@
 import { useState } from 'react'
 import { usePosition, useStatus } from './hooks/useDeviceState'
 import { useDeviceStore } from './store/deviceStore'
+import { useSendCommand } from './hooks/useSendCommand'
 import { TopBar } from './components/layout/TopBar'
 import { NavRail } from './components/layout/NavRail'
 import { BottomNav } from './components/layout/BottomNav'
@@ -28,6 +29,10 @@ function Dashboard() {
   const deviceInfo = useDeviceStore((s) => s.deviceInfo)
   // remote-control state (host side)
   const { role, guestConnected, stopShare } = useTransport()
+  const send = useSendCommand()
+
+  const isHoming = mode === 'homing'
+  const programRunning = mode !== 'idle' && mode !== 'homing'
 
   return (
     <div className="flex flex-col h-full">
@@ -115,6 +120,30 @@ function Dashboard() {
                 <div className="mt-4">
                   <HealthRow />
                 </div>
+
+                {/* Calibration — locates the work-piece origin the "Use contact"
+                    quick-set below relies on. Hidden while a program is running,
+                    same as the recalibrate shortcut in GamesControls. */}
+                {!programRunning && (
+                  <div className="mt-4 flex items-center justify-between gap-3 rounded-xl bg-slate-800/50 border border-slate-700 p-3">
+                    <div>
+                      <p className="text-xs font-medium text-slate-400">Calibration</p>
+                      <p className="text-[10px] text-slate-600 mt-0.5">Homes, then senses contact to locate depth zero</p>
+                    </div>
+                    <button
+                      onClick={() => send({ type: 'calibrate' })}
+                      disabled={!actuatorConnected || isHoming}
+                      className="flex items-center justify-center gap-2 px-4 py-2 bg-amber-600 hover:bg-amber-500 disabled:bg-slate-700 disabled:text-slate-500 text-white text-sm font-semibold rounded-xl transition-colors shrink-0"
+                    >
+                      {isHoming ? (
+                        <>
+                          <span className="w-4 h-4 border-2 border-white/30 border-t-white rounded-full animate-spin" />
+                          Homing…
+                        </>
+                      ) : 'Calibrate'}
+                    </button>
+                  </div>
+                )}
 
                 {/* Global comfortable/max depth ceilings */}
                 <div className="mt-4">
