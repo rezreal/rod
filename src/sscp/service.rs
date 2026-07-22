@@ -8,9 +8,9 @@
 
 // Characteristic UUIDs (within the Handy FW4 service).
 pub const CHAR_TELEMETRY: &str = "7e400002-b5a3-f393-e0a9-e50e24dc4179"; // Notify
-pub const CHAR_COMMAND:   &str = "7e400003-b5a3-f393-e0a9-e50e24dc4179"; // Write
-pub const CHAR_ACK:       &str = "7e400004-b5a3-f393-e0a9-e50e24dc4179"; // Notify
-pub const CHAR_DEV_INFO:  &str = "7e400005-b5a3-f393-e0a9-e50e24dc4179"; // Read
+pub const CHAR_COMMAND: &str = "7e400003-b5a3-f393-e0a9-e50e24dc4179"; // Write
+pub const CHAR_ACK: &str = "7e400004-b5a3-f393-e0a9-e50e24dc4179"; // Notify
+pub const CHAR_DEV_INFO: &str = "7e400005-b5a3-f393-e0a9-e50e24dc4179"; // Read
 
 #[cfg(target_os = "linux")]
 pub use imp::{make_sscp_characteristics, spawn_sscp_tasks, SscpControls};
@@ -22,9 +22,9 @@ mod imp {
     use std::time::Duration;
 
     use bluer::gatt::local::{
-        characteristic_control, Characteristic, CharacteristicControl,
-        CharacteristicControlEvent, CharacteristicNotify, CharacteristicNotifyMethod,
-        CharacteristicRead, CharacteristicWrite, CharacteristicWriteMethod,
+        characteristic_control, Characteristic, CharacteristicControl, CharacteristicControlEvent,
+        CharacteristicNotify, CharacteristicNotifyMethod, CharacteristicRead, CharacteristicWrite,
+        CharacteristicWriteMethod,
     };
     use bluer::gatt::CharacteristicWriter;
     use bluer::Uuid;
@@ -40,11 +40,11 @@ mod imp {
         ModeControls, PlumbControl, PulseControl, RampControl, SurgeControl, TempoControl,
         TideControl, TraceControl,
     };
-    use crate::rpc::{
-        request::Params, Request, RequestHampStart, RequestHampStop,
-        RequestHampVelocitySet, RequestHampZoneSet, RequestHdspStop, RequestHdspXpVpSet,
-    };
     use crate::rpc::dispatch::Dispatcher;
+    use crate::rpc::{
+        request::Params, Request, RequestHampStart, RequestHampStop, RequestHampVelocitySet,
+        RequestHampZoneSet, RequestHdspStop, RequestHdspXpVpSet,
+    };
     use crate::sscp::{build_telemetry, Command, CommandAck};
     use crate::state::{AppState, BridgeCommand};
 
@@ -64,12 +64,15 @@ mod imp {
 
     /// Build the four SSCP `Characteristic` structs.
     /// Caller appends them to the existing Handy FW4 service's characteristics vec.
-    pub fn make_sscp_characteristics(cfg: &Config, modes: ModeControls) -> anyhow::Result<(Vec<Characteristic>, SscpControls)> {
+    pub fn make_sscp_characteristics(
+        cfg: &Config,
+        modes: ModeControls,
+    ) -> anyhow::Result<(Vec<Characteristic>, SscpControls)> {
         use anyhow::Context as _;
 
-        let tel_uuid      = Uuid::from_str(CHAR_TELEMETRY).context("telemetry UUID")?;
-        let cmd_uuid      = Uuid::from_str(CHAR_COMMAND).context("command UUID")?;
-        let ack_uuid      = Uuid::from_str(CHAR_ACK).context("ack UUID")?;
+        let tel_uuid = Uuid::from_str(CHAR_TELEMETRY).context("telemetry UUID")?;
+        let cmd_uuid = Uuid::from_str(CHAR_COMMAND).context("command UUID")?;
+        let ack_uuid = Uuid::from_str(CHAR_ACK).context("ack UUID")?;
         let dev_info_uuid = Uuid::from_str(CHAR_DEV_INFO).context("dev-info UUID")?;
 
         let dev_info_json = {
@@ -136,7 +139,15 @@ mod imp {
             },
         ];
 
-        Ok((chars, SscpControls { tel_control, cmd_control, ack_control, modes }))
+        Ok((
+            chars,
+            SscpControls {
+                tel_control,
+                cmd_control,
+                ack_control,
+                modes,
+            },
+        ))
     }
 
     /// Spawn the telemetry poll and command handler tasks.
@@ -308,59 +319,82 @@ mod imp {
                 dispatcher.stop_everything().await;
             }
             Command::HampStart => {
-                dispatcher.handle_request(Request {
-                    id: 0,
-                    params: Some(Params::RequestHampStart(RequestHampStart {})),
-                }).await;
+                dispatcher
+                    .handle_request(Request {
+                        id: 0,
+                        params: Some(Params::RequestHampStart(RequestHampStart {})),
+                    })
+                    .await;
             }
             Command::HampStop => {
-                dispatcher.handle_request(Request {
-                    id: 0,
-                    params: Some(Params::RequestHampStop(RequestHampStop {})),
-                }).await;
-            }
-            Command::HampConfig { velocity, zone_min, zone_max, softness } => {
-                if let Some(v) = velocity {
-                    dispatcher.handle_request(Request {
+                dispatcher
+                    .handle_request(Request {
                         id: 0,
-                        params: Some(Params::RequestHampVelocitySet(
-                            RequestHampVelocitySet { velocity: v },
-                        )),
-                    }).await;
+                        params: Some(Params::RequestHampStop(RequestHampStop {})),
+                    })
+                    .await;
+            }
+            Command::HampConfig {
+                velocity,
+                zone_min,
+                zone_max,
+                softness,
+            } => {
+                if let Some(v) = velocity {
+                    dispatcher
+                        .handle_request(Request {
+                            id: 0,
+                            params: Some(Params::RequestHampVelocitySet(RequestHampVelocitySet {
+                                velocity: v,
+                            })),
+                        })
+                        .await;
                 }
                 if let (Some(mn), Some(mx)) = (zone_min, zone_max) {
-                    dispatcher.handle_request(Request {
-                        id: 0,
-                        params: Some(Params::RequestHampZoneSet(
-                            RequestHampZoneSet { min: mn, max: mx },
-                        )),
-                    }).await;
+                    dispatcher
+                        .handle_request(Request {
+                            id: 0,
+                            params: Some(Params::RequestHampZoneSet(RequestHampZoneSet {
+                                min: mn,
+                                max: mx,
+                            })),
+                        })
+                        .await;
                 }
                 if let Some(s) = softness {
                     // No Handy RPC equivalent — write directly; HampTask picks it up.
                     state.write().await.hamp.softness = s.clamp(0.0, 1.0);
                 }
             }
-            Command::HdspMove { position_pct, velocity_pct } => {
-                dispatcher.handle_request(Request {
-                    id: 0,
-                    params: Some(Params::RequestHdspXpVpSet(RequestHdspXpVpSet {
-                        xp: position_pct,
-                        vp: velocity_pct,
-                        stop_on_target: false,
-                    })),
-                }).await;
+            Command::HdspMove {
+                position_pct,
+                velocity_pct,
+            } => {
+                dispatcher
+                    .handle_request(Request {
+                        id: 0,
+                        params: Some(Params::RequestHdspXpVpSet(RequestHdspXpVpSet {
+                            xp: position_pct,
+                            vp: velocity_pct,
+                            stop_on_target: false,
+                        })),
+                    })
+                    .await;
             }
             Command::HdspStop => {
-                dispatcher.handle_request(Request {
-                    id: 0,
-                    params: Some(Params::RequestHdspStop(RequestHdspStop {})),
-                }).await;
+                dispatcher
+                    .handle_request(Request {
+                        id: 0,
+                        params: Some(Params::RequestHdspStop(RequestHdspStop {})),
+                    })
+                    .await;
             }
             Command::ResetAlarm => {
                 let (reply, rx) = tokio::sync::oneshot::channel();
-                bridge_tx.send(BridgeCommand::ResetAlarm { reply })
-                    .await.map_err(|e| e.to_string())?;
+                bridge_tx
+                    .send(BridgeCommand::ResetAlarm { reply })
+                    .await
+                    .map_err(|e| e.to_string())?;
                 rx.await.map_err(|e| e.to_string())?.map_err(|e| e)?;
             }
             Command::Calibrate => {
@@ -370,175 +404,305 @@ mod imp {
                 // which only stops on a firm stall). Push-to-contact remains
                 // available via the debug console.
                 let (reply, rx) = tokio::sync::oneshot::channel();
-                bridge_tx.send(BridgeCommand::PeckProbe { reply })
-                    .await.map_err(|e| e.to_string())?;
+                bridge_tx
+                    .send(BridgeCommand::PeckProbe { reply })
+                    .await
+                    .map_err(|e| e.to_string())?;
                 rx.await.map_err(|e| e.to_string())?.map_err(|e| e)?;
             }
             Command::DrillStart { feed_rate_mm_s } => {
-                modes.drill.send(DrillControl::Start { feed_rate_mm_s })
-                    .await.map_err(|e| e.to_string())?;
+                modes
+                    .drill
+                    .send(DrillControl::Start { feed_rate_mm_s })
+                    .await
+                    .map_err(|e| e.to_string())?;
             }
             Command::DrillPush { feed_rate_mm_s } => {
-                modes.drill.send(DrillControl::Push { feed_rate_mm_s })
-                    .await.map_err(|e| e.to_string())?;
+                modes
+                    .drill
+                    .send(DrillControl::Push { feed_rate_mm_s })
+                    .await
+                    .map_err(|e| e.to_string())?;
             }
             Command::DrillConfig { feed_rate_mm_s } => {
-                modes.drill.send(DrillControl::SetFeedRate { feed_rate_mm_s })
-                    .await.map_err(|e| e.to_string())?;
+                modes
+                    .drill
+                    .send(DrillControl::SetFeedRate { feed_rate_mm_s })
+                    .await
+                    .map_err(|e| e.to_string())?;
             }
             Command::DrillStop => {
-                modes.drill.send(DrillControl::Stop)
-                    .await.map_err(|e| e.to_string())?;
+                modes
+                    .drill
+                    .send(DrillControl::Stop)
+                    .await
+                    .map_err(|e| e.to_string())?;
             }
             Command::RampStart { duration_s } => {
-                modes.ramp.send(RampControl::Start { duration_s })
-                    .await.map_err(|e| e.to_string())?;
+                modes
+                    .ramp
+                    .send(RampControl::Start { duration_s })
+                    .await
+                    .map_err(|e| e.to_string())?;
             }
             Command::RampNudge { delta } => {
-                modes.ramp.send(RampControl::Nudge { delta })
-                    .await.map_err(|e| e.to_string())?;
+                modes
+                    .ramp
+                    .send(RampControl::Nudge { delta })
+                    .await
+                    .map_err(|e| e.to_string())?;
             }
             Command::RampStop => {
-                modes.ramp.send(RampControl::Stop)
-                    .await.map_err(|e| e.to_string())?;
+                modes
+                    .ramp
+                    .send(RampControl::Stop)
+                    .await
+                    .map_err(|e| e.to_string())?;
             }
             Command::GameStart { kind } => {
                 let k = crate::state::GameKind::parse(&kind)
                     .ok_or_else(|| format!("unknown game kind {kind:?}"))?;
-                modes.game.send(GameControl::Start { kind: k })
-                    .await.map_err(|e| e.to_string())?;
+                modes
+                    .game
+                    .send(GameControl::Start { kind: k })
+                    .await
+                    .map_err(|e| e.to_string())?;
             }
             Command::GameButton { down } => {
-                modes.game.send(GameControl::Button { down })
-                    .await.map_err(|e| e.to_string())?;
+                modes
+                    .game
+                    .send(GameControl::Button { down })
+                    .await
+                    .map_err(|e| e.to_string())?;
             }
             Command::GameStop => {
-                modes.game.send(GameControl::Stop)
-                    .await.map_err(|e| e.to_string())?;
+                modes
+                    .game
+                    .send(GameControl::Stop)
+                    .await
+                    .map_err(|e| e.to_string())?;
             }
             Command::CycleStart => {
-                modes.cycle.send(CycleControl::Start)
-                    .await.map_err(|e| e.to_string())?;
+                modes
+                    .cycle
+                    .send(CycleControl::Start)
+                    .await
+                    .map_err(|e| e.to_string())?;
             }
             Command::CycleButton { down } => {
-                modes.cycle.send(CycleControl::Button { down })
-                    .await.map_err(|e| e.to_string())?;
+                modes
+                    .cycle
+                    .send(CycleControl::Button { down })
+                    .await
+                    .map_err(|e| e.to_string())?;
             }
             Command::CycleStop => {
-                modes.cycle.send(CycleControl::Stop)
-                    .await.map_err(|e| e.to_string())?;
+                modes
+                    .cycle
+                    .send(CycleControl::Stop)
+                    .await
+                    .map_err(|e| e.to_string())?;
             }
             Command::LearnStart => {
-                modes.learn.send(LearnControl::Start)
-                    .await.map_err(|e| e.to_string())?;
+                modes
+                    .learn
+                    .send(LearnControl::Start)
+                    .await
+                    .map_err(|e| e.to_string())?;
             }
             Command::LearnButton => {
-                modes.learn.send(LearnControl::Button)
-                    .await.map_err(|e| e.to_string())?;
+                modes
+                    .learn
+                    .send(LearnControl::Button)
+                    .await
+                    .map_err(|e| e.to_string())?;
             }
             Command::LearnStop => {
-                modes.learn.send(LearnControl::Stop)
-                    .await.map_err(|e| e.to_string())?;
+                modes
+                    .learn
+                    .send(LearnControl::Stop)
+                    .await
+                    .map_err(|e| e.to_string())?;
             }
             Command::PulseStart { factor } => {
-                modes.pulse.send(PulseControl::Start { factor })
-                    .await.map_err(|e| e.to_string())?;
+                modes
+                    .pulse
+                    .send(PulseControl::Start { factor })
+                    .await
+                    .map_err(|e| e.to_string())?;
             }
             Command::PulseSetFactor { factor } => {
-                modes.pulse.send(PulseControl::SetFactor { factor })
-                    .await.map_err(|e| e.to_string())?;
+                modes
+                    .pulse
+                    .send(PulseControl::SetFactor { factor })
+                    .await
+                    .map_err(|e| e.to_string())?;
             }
             Command::PulseStop => {
-                modes.pulse.send(PulseControl::Stop)
-                    .await.map_err(|e| e.to_string())?;
+                modes
+                    .pulse
+                    .send(PulseControl::Stop)
+                    .await
+                    .map_err(|e| e.to_string())?;
             }
-            Command::ImpaleStart { feed_rate_mm_s, retract_after_s } => {
-                modes.impale.send(ImpaleControl::Start { feed_rate_mm_s, retract_after_s })
-                    .await.map_err(|e| e.to_string())?;
+            Command::ImpaleStart {
+                feed_rate_mm_s,
+                retract_after_s,
+            } => {
+                modes
+                    .impale
+                    .send(ImpaleControl::Start {
+                        feed_rate_mm_s,
+                        retract_after_s,
+                    })
+                    .await
+                    .map_err(|e| e.to_string())?;
             }
             Command::ImpaleButton { down } => {
-                modes.impale.send(ImpaleControl::Button { down })
-                    .await.map_err(|e| e.to_string())?;
+                modes
+                    .impale
+                    .send(ImpaleControl::Button { down })
+                    .await
+                    .map_err(|e| e.to_string())?;
             }
             Command::ImpaleConfig { retract_after_s } => {
-                modes.impale.send(ImpaleControl::SetRetractAfter { retract_after_s })
-                    .await.map_err(|e| e.to_string())?;
+                modes
+                    .impale
+                    .send(ImpaleControl::SetRetractAfter { retract_after_s })
+                    .await
+                    .map_err(|e| e.to_string())?;
             }
             Command::ImpaleStop => {
-                modes.impale.send(ImpaleControl::Stop)
-                    .await.map_err(|e| e.to_string())?;
+                modes
+                    .impale
+                    .send(ImpaleControl::Stop)
+                    .await
+                    .map_err(|e| e.to_string())?;
             }
             Command::CoyoteSetStrength { a, b } => {
-                modes.coyote.send(crate::devices::CoyoteControl::SetStrength { a, b })
-                    .await.map_err(|e| e.to_string())?;
+                modes
+                    .coyote
+                    .send(crate::devices::CoyoteControl::SetStrength { a, b })
+                    .await
+                    .map_err(|e| e.to_string())?;
             }
             Command::CoyoteFollow { enable, scale } => {
-                modes.coyote.send(crate::devices::CoyoteControl::Follow { enable, scale })
-                    .await.map_err(|e| e.to_string())?;
+                modes
+                    .coyote
+                    .send(crate::devices::CoyoteControl::Follow { enable, scale })
+                    .await
+                    .map_err(|e| e.to_string())?;
             }
             Command::CoyoteStop => {
-                modes.coyote.send(crate::devices::CoyoteControl::Stop)
-                    .await.map_err(|e| e.to_string())?;
+                modes
+                    .coyote
+                    .send(crate::devices::CoyoteControl::Stop)
+                    .await
+                    .map_err(|e| e.to_string())?;
             }
             Command::HrConnect => {
-                modes.sensors.send(crate::sensors::SensorControl::Connect)
-                    .await.map_err(|e| e.to_string())?;
+                modes
+                    .sensors
+                    .send(crate::sensors::SensorControl::Connect)
+                    .await
+                    .map_err(|e| e.to_string())?;
             }
             Command::HrDisconnect => {
-                modes.sensors.send(crate::sensors::SensorControl::Disconnect)
-                    .await.map_err(|e| e.to_string())?;
+                modes
+                    .sensors
+                    .send(crate::sensors::SensorControl::Disconnect)
+                    .await
+                    .map_err(|e| e.to_string())?;
             }
             Command::SetMaxDepth { mm } => {
-                bridge_tx.send(BridgeCommand::SetMaxDepth { mm })
-                    .await.map_err(|e| e.to_string())?;
+                bridge_tx
+                    .send(BridgeCommand::SetMaxDepth { mm })
+                    .await
+                    .map_err(|e| e.to_string())?;
             }
             Command::PlumbStart => {
-                modes.plumb.send(PlumbControl::Start)
-                    .await.map_err(|e| e.to_string())?;
+                modes
+                    .plumb
+                    .send(PlumbControl::Start)
+                    .await
+                    .map_err(|e| e.to_string())?;
             }
             Command::PlumbStop => {
-                modes.plumb.send(PlumbControl::Stop)
-                    .await.map_err(|e| e.to_string())?;
+                modes
+                    .plumb
+                    .send(PlumbControl::Stop)
+                    .await
+                    .map_err(|e| e.to_string())?;
             }
             Command::SurgeStart => {
-                modes.surge.send(SurgeControl::Start)
-                    .await.map_err(|e| e.to_string())?;
+                modes
+                    .surge
+                    .send(SurgeControl::Start)
+                    .await
+                    .map_err(|e| e.to_string())?;
             }
             Command::SurgeStop => {
-                modes.surge.send(SurgeControl::Stop)
-                    .await.map_err(|e| e.to_string())?;
+                modes
+                    .surge
+                    .send(SurgeControl::Stop)
+                    .await
+                    .map_err(|e| e.to_string())?;
             }
             Command::TideStart => {
-                modes.tide.send(TideControl::Start)
-                    .await.map_err(|e| e.to_string())?;
+                modes
+                    .tide
+                    .send(TideControl::Start)
+                    .await
+                    .map_err(|e| e.to_string())?;
             }
             Command::TideStop => {
-                modes.tide.send(TideControl::Stop)
-                    .await.map_err(|e| e.to_string())?;
+                modes
+                    .tide
+                    .send(TideControl::Stop)
+                    .await
+                    .map_err(|e| e.to_string())?;
             }
             Command::EchoStart => {
-                modes.echo.send(EchoControl::Start)
-                    .await.map_err(|e| e.to_string())?;
+                modes
+                    .echo
+                    .send(EchoControl::Start)
+                    .await
+                    .map_err(|e| e.to_string())?;
             }
             Command::EchoStop => {
-                modes.echo.send(EchoControl::Stop)
-                    .await.map_err(|e| e.to_string())?;
+                modes
+                    .echo
+                    .send(EchoControl::Stop)
+                    .await
+                    .map_err(|e| e.to_string())?;
             }
             Command::TraceStart => {
-                modes.trace.send(TraceControl::Start)
-                    .await.map_err(|e| e.to_string())?;
+                modes
+                    .trace
+                    .send(TraceControl::Start)
+                    .await
+                    .map_err(|e| e.to_string())?;
             }
             Command::TraceStop => {
-                modes.trace.send(TraceControl::Stop)
-                    .await.map_err(|e| e.to_string())?;
+                modes
+                    .trace
+                    .send(TraceControl::Stop)
+                    .await
+                    .map_err(|e| e.to_string())?;
             }
             Command::TempoStart => {
-                modes.tempo.send(TempoControl::Start)
-                    .await.map_err(|e| e.to_string())?;
+                modes
+                    .tempo
+                    .send(TempoControl::Start)
+                    .await
+                    .map_err(|e| e.to_string())?;
             }
             Command::TempoStop => {
-                modes.tempo.send(TempoControl::Stop)
-                    .await.map_err(|e| e.to_string())?;
+                modes
+                    .tempo
+                    .send(TempoControl::Stop)
+                    .await
+                    .map_err(|e| e.to_string())?;
             }
         }
         Ok(())
@@ -547,7 +711,9 @@ mod imp {
     async fn send_ack(ack_tx: &mpsc::Sender<Vec<u8>>, seq: u32, ok: bool, error: Option<String>) {
         let ack = CommandAck { seq, ok, error };
         match serde_json::to_vec(&ack) {
-            Ok(bytes) => { let _ = ack_tx.send(bytes).await; }
+            Ok(bytes) => {
+                let _ = ack_tx.send(bytes).await;
+            }
             Err(e) => warn!(error = %e, "SSCP ack serialise failed"),
         }
     }

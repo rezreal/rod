@@ -50,7 +50,9 @@ pub async fn run(
     _adapter: String,
     _name_filter: String,
 ) {
-    tracing::warn!("heart-rate sensor (BLE central) requires Linux/BlueZ — skipping on this platform.");
+    tracing::warn!(
+        "heart-rate sensor (BLE central) requires Linux/BlueZ — skipping on this platform."
+    );
     // Drain control messages so senders never block on this platform.
     while ctrl_rx.recv().await.is_some() {}
 }

@@ -5,6 +5,7 @@
 
 pub mod cycle;
 pub mod drill;
+pub mod echo;
 pub mod games;
 pub mod hamp;
 pub mod handswitch;
@@ -12,14 +13,13 @@ pub mod hdsp;
 pub mod hsp;
 pub mod impale;
 pub mod learn;
+pub mod plumb;
 pub mod pulse;
 pub mod ramp;
-pub mod plumb;
 pub mod surge;
-pub mod tide;
-pub mod echo;
-pub mod trace;
 pub mod tempo;
+pub mod tide;
+pub mod trace;
 
 use tokio::sync::mpsc;
 

@@ -17,8 +17,8 @@ fn move_command_is_nine_registers_high_word_first() {
     assert_eq!([regs[4], regs[5]], [0x0000, 0x9C40]); // VCMD u32
     assert_eq!(regs[6], 30); // ACMD
     assert_eq!(regs[7], 0); // push current
-    // CTLF MOD bits are 0: this controller faults (0xA3) on bits 4–7, so every
-    // profile emits trapezoid. See `ctlf_for_profile`.
+                            // CTLF MOD bits are 0: this controller faults (0xA3) on bits 4–7, so every
+                            // profile emits trapezoid. See `ctlf_for_profile`.
     assert_eq!(regs[8], 0x00);
 }
 

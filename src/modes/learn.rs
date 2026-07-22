@@ -335,7 +335,10 @@ mod tests {
 
         // Press → recording; sample a little (position constant → 2 waypoints).
         ctrl_tx.send(LearnControl::Button).await.unwrap();
-        for _ in 0..6 { settle(50).await; while cmd_rx.try_recv().is_ok() {} }
+        for _ in 0..6 {
+            settle(50).await;
+            while cmd_rx.try_recv().is_ok() {}
+        }
         assert_eq!(state.read().await.learn.phase, LearnPhase::Recording);
         assert!(state.read().await.learn.points > 0);
 
@@ -347,7 +350,10 @@ mod tests {
 
         // Press → playing.
         ctrl_tx.send(LearnControl::Button).await.unwrap();
-        for _ in 0..4 { settle(50).await; while cmd_rx.try_recv().is_ok() {} }
+        for _ in 0..4 {
+            settle(50).await;
+            while cmd_rx.try_recv().is_ok() {}
+        }
         assert_eq!(state.read().await.learn.phase, LearnPhase::Playing);
 
         // Press → back to armed.

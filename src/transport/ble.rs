@@ -290,10 +290,20 @@ mod imp {
         let (out_tx, out_rx) = mpsc::channel::<Vec<u8>>(64);
         tokio::spawn(tx_pump(tx_control, out_rx));
         tokio::spawn(rx_pump(rx_control, in_tx));
-        tokio::spawn(bridge_pump(bridge_cmd_control, bridge_resp_control, bridge_tx.clone()));
+        tokio::spawn(bridge_pump(
+            bridge_cmd_control,
+            bridge_resp_control,
+            bridge_tx.clone(),
+        ));
 
         // ── SSCP I/O (within Handy service) ───────────────────────────────
-        spawn_sscp_tasks(state, dispatcher.clone(), bridge_tx, cfg.clone(), sscp_controls);
+        spawn_sscp_tasks(
+            state,
+            dispatcher.clone(),
+            bridge_tx,
+            cfg.clone(),
+            sscp_controls,
+        );
 
         serve_frames("ble", dispatcher, in_rx, out_tx, notif_tx.subscribe()).await;
         Ok(())

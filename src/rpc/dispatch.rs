@@ -12,8 +12,8 @@ use crate::config::{Config, MotionProfile};
 use crate::modes::handswitch::HandEdge;
 use crate::modes::{
     CycleControl, DrillControl, EchoControl, GameControl, HampControl, HspControl, ImpaleControl,
-    LearnControl, ModeControls, PlumbControl, PulseControl, RampControl, SurgeControl, TempoControl,
-    TideControl, TraceControl,
+    LearnControl, ModeControls, PlumbControl, PulseControl, RampControl, SurgeControl,
+    TempoControl, TideControl, TraceControl,
 };
 use crate::rpc::{request::Params, response::Result as Res, *};
 use crate::state::{ActuatorCommand, AppMode, AppState};
@@ -600,36 +600,62 @@ impl Dispatcher {
                     let _ = self
                         .modes
                         .drill
-                        .send(DrillControl::Push { feed_rate_mm_s: None })
+                        .send(DrillControl::Push {
+                            feed_rate_mm_s: None,
+                        })
                         .await;
                 }
             }
             // Deadman heartbeat: held = down, released = up.
             AppMode::Game => match edge {
                 HandEdge::Press | HandEdge::Hold => {
-                    let _ = self.modes.game.send(GameControl::Button { down: true }).await;
+                    let _ = self
+                        .modes
+                        .game
+                        .send(GameControl::Button { down: true })
+                        .await;
                 }
                 HandEdge::Release => {
-                    let _ = self.modes.game.send(GameControl::Button { down: false }).await;
+                    let _ = self
+                        .modes
+                        .game
+                        .send(GameControl::Button { down: false })
+                        .await;
                 }
             },
             // Deadman heartbeat: held extends the rod, released brakes it and
             // arms the auto-retract timer (mirrors the on-screen hold button).
             AppMode::Impale => match edge {
                 HandEdge::Press | HandEdge::Hold => {
-                    let _ = self.modes.impale.send(ImpaleControl::Button { down: true }).await;
+                    let _ = self
+                        .modes
+                        .impale
+                        .send(ImpaleControl::Button { down: true })
+                        .await;
                 }
                 HandEdge::Release => {
-                    let _ = self.modes.impale.send(ImpaleControl::Button { down: false }).await;
+                    let _ = self
+                        .modes
+                        .impale
+                        .send(ImpaleControl::Button { down: false })
+                        .await;
                 }
             },
             // Forward edges; the cycle task times short=next / long(≥2s)=pause.
             AppMode::Cycle => match edge {
                 HandEdge::Press => {
-                    let _ = self.modes.cycle.send(CycleControl::Button { down: true }).await;
+                    let _ = self
+                        .modes
+                        .cycle
+                        .send(CycleControl::Button { down: true })
+                        .await;
                 }
                 HandEdge::Release => {
-                    let _ = self.modes.cycle.send(CycleControl::Button { down: false }).await;
+                    let _ = self
+                        .modes
+                        .cycle
+                        .send(CycleControl::Button { down: false })
+                        .await;
                 }
                 HandEdge::Hold => {}
             },
@@ -642,7 +668,11 @@ impl Dispatcher {
             // A tap builds intensity (mirrors the on-screen "build" nudge).
             AppMode::Ramp => {
                 if edge == HandEdge::Press {
-                    let _ = self.modes.ramp.send(RampControl::Nudge { delta: 0.1 }).await;
+                    let _ = self
+                        .modes
+                        .ramp
+                        .send(RampControl::Nudge { delta: 0.1 })
+                        .await;
                 }
             }
             // Toggle/host modes: the bridge only tracks the *running* program, not
@@ -690,7 +720,11 @@ impl Dispatcher {
         let _ = self.modes.trace.send(TraceControl::Stop).await;
         let _ = self.modes.tempo.send(TempoControl::Stop).await;
         // Safety: StopAll must also zero any external e-stim device.
-        let _ = self.modes.coyote.send(crate::devices::CoyoteControl::Stop).await;
+        let _ = self
+            .modes
+            .coyote
+            .send(crate::devices::CoyoteControl::Stop)
+            .await;
         self.send_cmd(ActuatorCommand::Stop).await;
     }
 
@@ -931,8 +965,32 @@ mod tests {
         let (echo_tx, _echo_rx) = mpsc::channel(16);
         let (trace_tx, _trace_rx) = mpsc::channel(16);
         let (tempo_tx, _tempo_rx) = mpsc::channel(16);
-        let modes = crate::modes::ModeControls { drill: drill_tx, ramp: ramp_tx, game: game_tx, cycle: cycle_tx, learn: learn_tx, pulse: pulse_tx, impale: impale_tx, coyote: coyote_tx, sensors: sensor_tx, plumb: plumb_tx, surge: surge_tx, tide: tide_tx, echo: echo_tx, trace: trace_tx, tempo: tempo_tx };
-        let d = Dispatcher::new(state.clone(), cmd_tx, notif_tx, hamp_tx, hsp_tx, modes, &cfg);
+        let modes = crate::modes::ModeControls {
+            drill: drill_tx,
+            ramp: ramp_tx,
+            game: game_tx,
+            cycle: cycle_tx,
+            learn: learn_tx,
+            pulse: pulse_tx,
+            impale: impale_tx,
+            coyote: coyote_tx,
+            sensors: sensor_tx,
+            plumb: plumb_tx,
+            surge: surge_tx,
+            tide: tide_tx,
+            echo: echo_tx,
+            trace: trace_tx,
+            tempo: tempo_tx,
+        };
+        let d = Dispatcher::new(
+            state.clone(),
+            cmd_tx,
+            notif_tx,
+            hamp_tx,
+            hsp_tx,
+            modes,
+            &cfg,
+        );
         Harness {
             d,
             state,

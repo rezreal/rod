@@ -154,7 +154,9 @@ impl CycleTask {
             stroke_mm: cfg.stroke_mm(),
             zone_min: c.zone_min,
             zone_max: c.zone_max,
-            max_velocity_mm_s: c.max_velocity_mm_s.min(cfg.actuator.limits.max_velocity_mm_s),
+            max_velocity_mm_s: c
+                .max_velocity_mm_s
+                .min(cfg.actuator.limits.max_velocity_mm_s),
             accel_g: c.accel_g,
             profile: cfg.motion_profile().unwrap_or(MotionProfile::Trapezoid),
             tick: Duration::from_millis(c.tick_ms.max(20)),
@@ -367,16 +369,25 @@ mod tests {
         assert_eq!(state.read().await.cycle.pattern, 0);
 
         // Short press: down then up well under 2s → next pattern.
-        ctrl_tx.send(CycleControl::Button { down: true }).await.unwrap();
+        ctrl_tx
+            .send(CycleControl::Button { down: true })
+            .await
+            .unwrap();
         tokio::time::advance(Duration::from_millis(200)).await;
         tokio::task::yield_now().await;
-        ctrl_tx.send(CycleControl::Button { down: false }).await.unwrap();
+        ctrl_tx
+            .send(CycleControl::Button { down: false })
+            .await
+            .unwrap();
         tokio::time::advance(Duration::from_millis(50)).await;
         tokio::task::yield_now().await;
         assert_eq!(state.read().await.cycle.pattern, 1);
 
         // Long press: hold past 2s → pause.
-        ctrl_tx.send(CycleControl::Button { down: true }).await.unwrap();
+        ctrl_tx
+            .send(CycleControl::Button { down: true })
+            .await
+            .unwrap();
         for _ in 0..25 {
             tokio::time::advance(Duration::from_millis(100)).await;
             tokio::task::yield_now().await;

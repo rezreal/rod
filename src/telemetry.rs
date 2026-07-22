@@ -43,10 +43,7 @@ impl Instruments {
     fn new(m: &Meter) -> Self {
         Instruments {
             moves_total: m.u64_counter("rod.moves.total").build(),
-            move_distance: m
-                .f64_histogram("rod.move.distance")
-                .with_unit("mm")
-                .build(),
+            move_distance: m.f64_histogram("rod.move.distance").with_unit("mm").build(),
             hsp_points_processed: m.u64_counter("rod.hsp.points_processed").build(),
             hsp_points_added: m.u64_counter("rod.hsp.points_added").build(),
             hsp_starving_total: m.u64_counter("rod.hsp.starving.total").build(),

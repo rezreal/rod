@@ -102,8 +102,7 @@ impl HampTask {
             (st.hamp.velocity, st.hamp.min, st.hamp.max, st.hamp.softness)
         };
         // softness 0 → full configured accel; softness 1 → 10 % of it.
-        let effective_accel_g =
-            self.accel_g * (1.0 - softness.clamp(0.0, 1.0) * 0.9);
+        let effective_accel_g = self.accel_g * (1.0 - softness.clamp(0.0, 1.0) * 0.9);
 
         let target_rel = if *out { min } else { max };
         let target_mm = target_rel * self.stroke_mm;

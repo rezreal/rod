@@ -210,8 +210,16 @@ mod tests {
         }
         // Strictly increasing, starting low, ending at full speed.
         assert!(vels[0] < vels[1] && vels[1] < vels[2], "rising: {vels:?}");
-        assert!(vels[0] < 120.0, "first sub-move should be slow: {}", vels[0]);
-        assert!((vels[2] - 300.0).abs() < 1.0, "last reaches full v: {}", vels[2]);
+        assert!(
+            vels[0] < 120.0,
+            "first sub-move should be slow: {}",
+            vels[0]
+        );
+        assert!(
+            (vels[2] - 300.0).abs() < 1.0,
+            "last reaches full v: {}",
+            vels[2]
+        );
 
         // Every emitted sub-move is unshaped so the driver never re-shapes.
         drop(in_tx);

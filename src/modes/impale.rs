@@ -253,7 +253,10 @@ impl ImpaleTask {
             st.impale.waiting = true;
             st.impale.retracting = false;
         }
-        info!(retract_after_s = hold, "impale: parked (brake-hold); retract armed");
+        info!(
+            retract_after_s = hold,
+            "impale: parked (brake-hold); retract armed"
+        );
     }
 }
 

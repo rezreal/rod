@@ -279,7 +279,11 @@ pub struct DrillRuntime {
 
 impl Default for DrillRuntime {
     fn default() -> Self {
-        DrillRuntime { active: false, pushing: false, feed_rate_mm_s: 5.0 }
+        DrillRuntime {
+            active: false,
+            pushing: false,
+            feed_rate_mm_s: 5.0,
+        }
     }
 }
 
@@ -485,15 +489,15 @@ pub struct AppState {
     pub motion_intensity: f32,
 
     // ── Granular DSS1/DSSE status bits (populated by the Modbus driver) ──
-    pub controller_ready: bool,   // DSS1.PWR
-    pub positioning_done: bool,   // DSS1.PEND
-    pub brake_released: bool,     // DSS1.BKRL
-    pub push_active: bool,        // DSSE.PUSH
-    pub emergency_stop: bool,     // DSS1.EMGS | DSSE.EMGP
-    pub motor_voltage_low: bool,  // DSSE.MPUV
-    pub safety_speed: bool,       // DSS1.SFTY
-    pub alarm_minor: bool,        // DSS1.ALML
-    pub alarm_major: bool,        // DSS1.ALMH
+    pub controller_ready: bool,  // DSS1.PWR
+    pub positioning_done: bool,  // DSS1.PEND
+    pub brake_released: bool,    // DSS1.BKRL
+    pub push_active: bool,       // DSSE.PUSH
+    pub emergency_stop: bool,    // DSS1.EMGS | DSSE.EMGP
+    pub motor_voltage_low: bool, // DSSE.MPUV
+    pub safety_speed: bool,      // DSS1.SFTY
+    pub alarm_minor: bool,       // DSS1.ALML
+    pub alarm_major: bool,       // DSS1.ALMH
     /// Hand/palm switch wired to the controller's PIO input (DIPM bit 0).
     pub hand_switch: bool,
 
@@ -718,7 +722,5 @@ pub enum BridgeCommand {
     /// Set the global max-depth (mm). Programs' moves are rescaled into
     /// `[0, max_depth]`, so all modes run between the entrance and this depth.
     /// Clamped to `[0, stroke]` and persisted across reboots. Fire-and-forget.
-    SetMaxDepth {
-        mm: f32,
-    },
+    SetMaxDepth { mm: f32 },
 }

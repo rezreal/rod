@@ -171,7 +171,11 @@ impl GameTask {
         let v = (self.g.min_velocity_mm_s
             + intensity.clamp(0.0, 1.0) * (self.g.max_velocity_mm_s - self.g.min_velocity_mm_s))
             .max(f32::MIN_POSITIVE);
-        let target_rel = if out { self.g.zone_min } else { self.g.zone_max };
+        let target_rel = if out {
+            self.g.zone_min
+        } else {
+            self.g.zone_max
+        };
         let _ = self
             .cmd_tx
             .send(ActuatorCommand::MoveTo {
@@ -191,7 +195,14 @@ impl GameTask {
     }
 
     /// Update the parts of the runtime that change every tick.
-    async fn publish(&self, phase: GamePhase, intensity: f32, level: u32, score_s: f32, holding: bool) {
+    async fn publish(
+        &self,
+        phase: GamePhase,
+        intensity: f32,
+        level: u32,
+        score_s: f32,
+        holding: bool,
+    ) {
         let mut st = self.state.write().await;
         st.game.phase = phase;
         st.game.intensity = intensity.clamp(0.0, 1.0);
@@ -543,7 +554,11 @@ mod tests {
     /// Advance one heartbeat: optionally resend the held button (clients resend
     /// every ~50ms; the deadman is 150ms), step the clock, let the task run, and
     /// drain the command channel so it never blocks.
-    async fn beat(ctrl: &mpsc::Sender<GameControl>, cmd_rx: &mut mpsc::Receiver<ActuatorCommand>, hold: bool) {
+    async fn beat(
+        ctrl: &mpsc::Sender<GameControl>,
+        cmd_rx: &mut mpsc::Receiver<ActuatorCommand>,
+        hold: bool,
+    ) {
         if hold {
             ctrl.send(GameControl::Button { down: true }).await.unwrap();
         }
@@ -555,7 +570,11 @@ mod tests {
     #[tokio::test(start_paused = true)]
     async fn edge_recover_climbs_while_held() {
         let (state, ctrl, mut cmd_rx, h) = spawn();
-        ctrl.send(GameControl::Start { kind: GameKind::EdgeRecover }).await.unwrap();
+        ctrl.send(GameControl::Start {
+            kind: GameKind::EdgeRecover,
+        })
+        .await
+        .unwrap();
 
         // Hold the button across ~10 heartbeats (climb_s = 1.0).
         for _ in 0..10 {
@@ -574,7 +593,11 @@ mod tests {
     #[tokio::test(start_paused = true)]
     async fn gauntlet_starts_resting_and_works_on_press() {
         let (state, ctrl, mut cmd_rx, h) = spawn();
-        ctrl.send(GameControl::Start { kind: GameKind::Gauntlet }).await.unwrap();
+        ctrl.send(GameControl::Start {
+            kind: GameKind::Gauntlet,
+        })
+        .await
+        .unwrap();
 
         // Settle into the rest phase (no button held).
         for _ in 0..2 {

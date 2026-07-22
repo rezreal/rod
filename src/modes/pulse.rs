@@ -109,7 +109,11 @@ impl PulseTask {
             st.sensors.hr_bpm.unwrap_or(self.p.base_bpm)
         };
         let v = self.velocity(bpm, factor).max(f32::MIN_POSITIVE);
-        let target_rel = if out { self.p.zone_min } else { self.p.zone_max };
+        let target_rel = if out {
+            self.p.zone_min
+        } else {
+            self.p.zone_max
+        };
 
         let _ = self
             .cmd_tx
@@ -182,7 +186,10 @@ mod tests {
         let (ctrl_tx, ctrl_rx) = mpsc::channel(16);
         let h = tokio::spawn(PulseTask::new(state.clone(), cmd_tx, &cfg()).run(ctrl_rx));
 
-        ctrl_tx.send(PulseControl::Start { factor: Some(2.0) }).await.unwrap();
+        ctrl_tx
+            .send(PulseControl::Start { factor: Some(2.0) })
+            .await
+            .unwrap();
         // ServoOn then the first stroke.
         assert_eq!(cmd_rx.recv().await.unwrap(), ActuatorCommand::ServoOn(true));
         let v = match cmd_rx.recv().await.unwrap() {
@@ -197,7 +204,9 @@ mod tests {
         tokio::task::yield_now().await;
         let mut v2 = v;
         while let Ok(c) = cmd_rx.try_recv() {
-            if let ActuatorCommand::MoveTo { vel_mm_s, .. } = c { v2 = vel_mm_s; }
+            if let ActuatorCommand::MoveTo { vel_mm_s, .. } = c {
+                v2 = vel_mm_s;
+            }
         }
         assert!(v2 > v, "faster heart rate → faster strokes: {v} -> {v2}");
 
@@ -213,7 +222,10 @@ mod tests {
         let (ctrl_tx, ctrl_rx) = mpsc::channel(16);
         let h = tokio::spawn(PulseTask::new(state.clone(), cmd_tx, &cfg()).run(ctrl_rx));
 
-        ctrl_tx.send(PulseControl::Start { factor: Some(1.0) }).await.unwrap();
+        ctrl_tx
+            .send(PulseControl::Start { factor: Some(1.0) })
+            .await
+            .unwrap();
         let _ = cmd_rx.recv().await; // ServoOn
         let v = match cmd_rx.recv().await.unwrap() {
             ActuatorCommand::MoveTo { vel_mm_s, .. } => vel_mm_s,

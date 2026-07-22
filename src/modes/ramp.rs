@@ -72,7 +72,9 @@ impl RampTask {
             cmd_tx,
             stroke_mm: cfg.stroke_mm(),
             min_velocity_mm_s: r.min_velocity_mm_s,
-            max_velocity_mm_s: r.max_velocity_mm_s.min(cfg.actuator.limits.max_velocity_mm_s),
+            max_velocity_mm_s: r
+                .max_velocity_mm_s
+                .min(cfg.actuator.limits.max_velocity_mm_s),
             ramp_duration: Duration::from_secs_f32(r.ramp_duration_s.max(0.1)),
             idle_timeout: Duration::from_secs_f32(r.idle_timeout_s.max(1.0)),
             full_zone_min: r.zone_min,
@@ -179,8 +181,8 @@ impl RampTask {
     /// the derived runtime to `AppState`, and return the estimated travel time
     /// until the reversal should be scheduled.
     async fn stroke(&self, intensity: f32, out: bool) -> Duration {
-        let velocity = self.min_velocity_mm_s
-            + intensity * (self.max_velocity_mm_s - self.min_velocity_mm_s);
+        let velocity =
+            self.min_velocity_mm_s + intensity * (self.max_velocity_mm_s - self.min_velocity_mm_s);
         let velocity = velocity.max(f32::MIN_POSITIVE);
 
         // Center-anchored zone that widens with intensity.
@@ -277,7 +279,10 @@ mod tests {
         let task = RampTask::new(state.clone(), cmd_tx, &cfg());
         let h = tokio::spawn(task.run(ctrl_rx));
 
-        ctrl_tx.send(RampControl::Start { duration_s: None }).await.unwrap();
+        ctrl_tx
+            .send(RampControl::Start { duration_s: None })
+            .await
+            .unwrap();
 
         // Start energises the servo, then fires the first stroke at intensity ~0.
         let first_servo = cmd_rx.recv().await.unwrap();

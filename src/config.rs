@@ -991,119 +991,327 @@ fn default_variant() -> String {
 fn default_home_direction() -> String {
     "negative".into()
 }
-fn default_drill_feed_rate() -> f32 { 5.0 }
-fn default_drill_deadman_ms() -> u64 { 50 }
-fn default_drill_accel_g() -> f32 { 0.05 }
+fn default_drill_feed_rate() -> f32 {
+    5.0
+}
+fn default_drill_deadman_ms() -> u64 {
+    50
+}
+fn default_drill_accel_g() -> f32 {
+    0.05
+}
 
-fn default_impale_feed_rate() -> f32 { 3.0 }
-fn default_impale_retract_speed() -> f32 { 20.0 }
-fn default_impale_retract_after() -> u64 { 600 }
-fn default_impale_accel_g() -> f32 { 0.05 }
-fn default_impale_deadman_ms() -> u64 { 150 }
+fn default_impale_feed_rate() -> f32 {
+    3.0
+}
+fn default_impale_retract_speed() -> f32 {
+    20.0
+}
+fn default_impale_retract_after() -> u64 {
+    600
+}
+fn default_impale_accel_g() -> f32 {
+    0.05
+}
+fn default_impale_deadman_ms() -> u64 {
+    150
+}
 
-fn default_plumb_speed() -> f32 { 40.0 }
-fn default_plumb_depth() -> f32 { 80.0 }
-fn default_plumb_accel_g() -> f32 { 0.15 }
-fn default_surge_rise_rate() -> f32 { 0.15 }
-fn default_surge_fall_rate() -> f32 { 0.08 }
-fn default_surge_min_speed() -> f32 { 5.0 }
-fn default_surge_max_speed() -> f32 { 80.0 }
-fn default_surge_lower_drift() -> f32 { 5.0 }
-fn default_surge_max_depth_pct() -> f32 { 1.0 }
-fn default_surge_accel_g() -> f32 { 0.1 }
-fn default_tide_min_speed() -> f32 { 10.0 }
-fn default_tide_max_speed() -> f32 { 80.0 }
-fn default_tide_depth() -> f32 { 80.0 }
-fn default_tide_adjust_rate() -> f32 { 20.0 }
-fn default_tide_accel_g() -> f32 { 0.15 }
-fn default_echo_start_depth() -> f32 { 20.0 }
-fn default_echo_step() -> f32 { 10.0 }
-fn default_echo_speed() -> f32 { 50.0 }
-fn default_echo_accel_g() -> f32 { 0.2 }
-fn default_echo_reset_hold_ms() -> u64 { 2000 }
-fn default_trace_depth() -> f32 { 80.0 }
-fn default_trace_speed() -> f32 { 40.0 }
-fn default_trace_accel_g() -> f32 { 0.15 }
-fn default_tempo_min_period() -> u64 { 400 }
-fn default_tempo_max_period() -> u64 { 4000 }
-fn default_tempo_depth() -> f32 { 80.0 }
-fn default_tempo_accel_g() -> f32 { 0.2 }
-fn default_tempo_stop_hold_ms() -> u64 { 1000 }
-fn default_tempo_timeout_periods() -> f32 { 2.0 }
+fn default_plumb_speed() -> f32 {
+    40.0
+}
+fn default_plumb_depth() -> f32 {
+    80.0
+}
+fn default_plumb_accel_g() -> f32 {
+    0.15
+}
+fn default_surge_rise_rate() -> f32 {
+    0.15
+}
+fn default_surge_fall_rate() -> f32 {
+    0.08
+}
+fn default_surge_min_speed() -> f32 {
+    5.0
+}
+fn default_surge_max_speed() -> f32 {
+    80.0
+}
+fn default_surge_lower_drift() -> f32 {
+    5.0
+}
+fn default_surge_max_depth_pct() -> f32 {
+    1.0
+}
+fn default_surge_accel_g() -> f32 {
+    0.1
+}
+fn default_tide_min_speed() -> f32 {
+    10.0
+}
+fn default_tide_max_speed() -> f32 {
+    80.0
+}
+fn default_tide_depth() -> f32 {
+    80.0
+}
+fn default_tide_adjust_rate() -> f32 {
+    20.0
+}
+fn default_tide_accel_g() -> f32 {
+    0.15
+}
+fn default_echo_start_depth() -> f32 {
+    20.0
+}
+fn default_echo_step() -> f32 {
+    10.0
+}
+fn default_echo_speed() -> f32 {
+    50.0
+}
+fn default_echo_accel_g() -> f32 {
+    0.2
+}
+fn default_echo_reset_hold_ms() -> u64 {
+    2000
+}
+fn default_trace_depth() -> f32 {
+    80.0
+}
+fn default_trace_speed() -> f32 {
+    40.0
+}
+fn default_trace_accel_g() -> f32 {
+    0.15
+}
+fn default_tempo_min_period() -> u64 {
+    400
+}
+fn default_tempo_max_period() -> u64 {
+    4000
+}
+fn default_tempo_depth() -> f32 {
+    80.0
+}
+fn default_tempo_accel_g() -> f32 {
+    0.2
+}
+fn default_tempo_stop_hold_ms() -> u64 {
+    1000
+}
+fn default_tempo_timeout_periods() -> f32 {
+    2.0
+}
 
-fn default_ramp_min_velocity() -> f32 { 40.0 }
-fn default_ramp_max_velocity() -> f32 { 250.0 }
-fn default_ramp_duration() -> f32 { 120.0 }
-fn default_ramp_idle_timeout() -> f32 { 180.0 }
-fn default_ramp_zone_min() -> f32 { 0.1 }
-fn default_ramp_zone_max() -> f32 { 0.9 }
-fn default_ramp_min_span_frac() -> f32 { 0.2 }
-fn default_ramp_curve_exp() -> f32 { 2.0 }
-fn default_ramp_accel_g() -> f32 { 0.2 }
+fn default_ramp_min_velocity() -> f32 {
+    40.0
+}
+fn default_ramp_max_velocity() -> f32 {
+    250.0
+}
+fn default_ramp_duration() -> f32 {
+    120.0
+}
+fn default_ramp_idle_timeout() -> f32 {
+    180.0
+}
+fn default_ramp_zone_min() -> f32 {
+    0.1
+}
+fn default_ramp_zone_max() -> f32 {
+    0.9
+}
+fn default_ramp_min_span_frac() -> f32 {
+    0.2
+}
+fn default_ramp_curve_exp() -> f32 {
+    2.0
+}
+fn default_ramp_accel_g() -> f32 {
+    0.2
+}
 
-fn default_soften_step_ms() -> u64 { 40 }
-fn default_soften_ramp_ms() -> u64 { 120 }
-fn default_soften_start_frac() -> f32 { 0.3 }
-fn default_soften_curve_exp() -> f32 { 2.0 }
+fn default_soften_step_ms() -> u64 {
+    40
+}
+fn default_soften_ramp_ms() -> u64 {
+    120
+}
+fn default_soften_start_frac() -> f32 {
+    0.3
+}
+fn default_soften_curve_exp() -> f32 {
+    2.0
+}
 
-fn default_game_zone_min() -> f32 { 0.1 }
-fn default_game_zone_max() -> f32 { 0.9 }
-fn default_game_min_velocity() -> f32 { 40.0 }
-fn default_game_max_velocity() -> f32 { 250.0 }
-fn default_game_accel_g() -> f32 { 0.2 }
-fn default_game_deadman_ms() -> u64 { 150 }
-fn default_game_tick_ms() -> u64 { 100 }
-fn default_game_climb_s() -> f32 { 45.0 }
-fn default_game_backoff_rate() -> f32 { 0.6 }
-fn default_game_push_start_pct() -> u16 { 10 }
-fn default_game_push_max_pct() -> u16 { 40 }
-fn default_game_push_ramp_s() -> f32 { 90.0 }
-fn default_game_line_advance_mm() -> f32 { 15.0 }
-fn default_game_push_velocity() -> f32 { 8.0 }
-fn default_game_work_s() -> f32 { 15.0 }
-fn default_game_work_growth_s() -> f32 { 5.0 }
-fn default_game_rest_s() -> f32 { 12.0 }
-fn default_game_checkpoints() -> u32 { 5 }
-fn default_game_climb_total_s() -> f32 { 90.0 }
-fn default_game_still_tol_mm() -> f32 { 12.0 }
-fn default_game_still_nudge_mm() -> f32 { 6.0 }
-fn default_game_still_nudge_min_ms() -> u64 { 1500 }
-fn default_game_still_nudge_max_ms() -> u64 { 4500 }
+fn default_game_zone_min() -> f32 {
+    0.1
+}
+fn default_game_zone_max() -> f32 {
+    0.9
+}
+fn default_game_min_velocity() -> f32 {
+    40.0
+}
+fn default_game_max_velocity() -> f32 {
+    250.0
+}
+fn default_game_accel_g() -> f32 {
+    0.2
+}
+fn default_game_deadman_ms() -> u64 {
+    150
+}
+fn default_game_tick_ms() -> u64 {
+    100
+}
+fn default_game_climb_s() -> f32 {
+    45.0
+}
+fn default_game_backoff_rate() -> f32 {
+    0.6
+}
+fn default_game_push_start_pct() -> u16 {
+    10
+}
+fn default_game_push_max_pct() -> u16 {
+    40
+}
+fn default_game_push_ramp_s() -> f32 {
+    90.0
+}
+fn default_game_line_advance_mm() -> f32 {
+    15.0
+}
+fn default_game_push_velocity() -> f32 {
+    8.0
+}
+fn default_game_work_s() -> f32 {
+    15.0
+}
+fn default_game_work_growth_s() -> f32 {
+    5.0
+}
+fn default_game_rest_s() -> f32 {
+    12.0
+}
+fn default_game_checkpoints() -> u32 {
+    5
+}
+fn default_game_climb_total_s() -> f32 {
+    90.0
+}
+fn default_game_still_tol_mm() -> f32 {
+    12.0
+}
+fn default_game_still_nudge_mm() -> f32 {
+    6.0
+}
+fn default_game_still_nudge_min_ms() -> u64 {
+    1500
+}
+fn default_game_still_nudge_max_ms() -> u64 {
+    4500
+}
 
-fn default_cycle_zone_min() -> f32 { 0.1 }
-fn default_cycle_zone_max() -> f32 { 0.9 }
-fn default_cycle_max_velocity() -> f32 { 300.0 }
-fn default_cycle_accel_g() -> f32 { 0.3 }
-fn default_cycle_tick_ms() -> u64 { 80 }
-fn default_cycle_long_press_ms() -> u64 { 2000 }
+fn default_cycle_zone_min() -> f32 {
+    0.1
+}
+fn default_cycle_zone_max() -> f32 {
+    0.9
+}
+fn default_cycle_max_velocity() -> f32 {
+    300.0
+}
+fn default_cycle_accel_g() -> f32 {
+    0.3
+}
+fn default_cycle_tick_ms() -> u64 {
+    80
+}
+fn default_cycle_long_press_ms() -> u64 {
+    2000
+}
 
-fn default_learn_sample_ms() -> u64 { 80 }
-fn default_learn_max_record_s() -> f32 { 60.0 }
-fn default_learn_epsilon_mm() -> f32 { 2.0 }
-fn default_learn_max_waypoints() -> usize { 200 }
-fn default_learn_max_velocity() -> f32 { 300.0 }
-fn default_learn_accel_g() -> f32 { 0.3 }
-fn default_learn_loop_gap_ms() -> u64 { 600 }
+fn default_learn_sample_ms() -> u64 {
+    80
+}
+fn default_learn_max_record_s() -> f32 {
+    60.0
+}
+fn default_learn_epsilon_mm() -> f32 {
+    2.0
+}
+fn default_learn_max_waypoints() -> usize {
+    200
+}
+fn default_learn_max_velocity() -> f32 {
+    300.0
+}
+fn default_learn_accel_g() -> f32 {
+    0.3
+}
+fn default_learn_loop_gap_ms() -> u64 {
+    600
+}
 
-fn default_pulse_factor() -> f32 { 2.0 }
-fn default_pulse_min_velocity() -> f32 { 30.0 }
-fn default_pulse_max_velocity() -> f32 { 300.0 }
-fn default_pulse_zone_min() -> f32 { 0.1 }
-fn default_pulse_zone_max() -> f32 { 0.9 }
-fn default_pulse_accel_g() -> f32 { 0.2 }
-fn default_pulse_base_bpm() -> u16 { 70 }
+fn default_pulse_factor() -> f32 {
+    2.0
+}
+fn default_pulse_min_velocity() -> f32 {
+    30.0
+}
+fn default_pulse_max_velocity() -> f32 {
+    300.0
+}
+fn default_pulse_zone_min() -> f32 {
+    0.1
+}
+fn default_pulse_zone_max() -> f32 {
+    0.9
+}
+fn default_pulse_accel_g() -> f32 {
+    0.2
+}
+fn default_pulse_base_bpm() -> u16 {
+    70
+}
 
-fn default_coyote_max_strength() -> u8 { 20 }
-fn default_coyote_freq() -> u16 { 100 }
-fn default_coyote_intensity() -> u8 { 30 }
-fn default_coyote_follow_scale() -> f32 { 1.0 }
-fn default_peck_coarse_step() -> f32 { 5.0 }
-fn default_peck_fine_step() -> f32 { 1.0 }
-fn default_peck_fine_back() -> f32 { 8.0 }
-fn default_peck_move_vel() -> f32 { 20.0 }
-fn default_peck_release_ms() -> u64 { 80 }
-fn default_peck_threshold() -> f32 { 0.3 }
-fn default_peck_return_vel() -> f32 { 10.0 }
+fn default_coyote_max_strength() -> u8 {
+    20
+}
+fn default_coyote_freq() -> u16 {
+    100
+}
+fn default_coyote_intensity() -> u8 {
+    30
+}
+fn default_coyote_follow_scale() -> f32 {
+    1.0
+}
+fn default_peck_coarse_step() -> f32 {
+    5.0
+}
+fn default_peck_fine_step() -> f32 {
+    1.0
+}
+fn default_peck_fine_back() -> f32 {
+    8.0
+}
+fn default_peck_move_vel() -> f32 {
+    20.0
+}
+fn default_peck_release_ms() -> u64 {
+    80
+}
+fn default_peck_threshold() -> f32 {
+    0.3
+}
+fn default_peck_return_vel() -> f32 {
+    10.0
+}
 
 fn default_touch_velocity() -> f32 {
     2.0

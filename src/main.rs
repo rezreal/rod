@@ -12,19 +12,19 @@ use rod::config::Config;
 use rod::modbus::driver::{ModbusDriver, SerialBus};
 use rod::modes::cycle::CycleTask;
 use rod::modes::drill::DrillTask;
+use rod::modes::echo::EchoTask;
 use rod::modes::games::GameTask;
-use rod::modes::learn::LearnTask;
 use rod::modes::hamp::HampTask;
 use rod::modes::hsp::HspTask;
 use rod::modes::impale::ImpaleTask;
+use rod::modes::learn::LearnTask;
+use rod::modes::plumb::PlumbTask;
 use rod::modes::pulse::PulseTask;
 use rod::modes::ramp::RampTask;
-use rod::modes::plumb::PlumbTask;
 use rod::modes::surge::SurgeTask;
-use rod::modes::tide::TideTask;
-use rod::modes::echo::EchoTask;
-use rod::modes::trace::TraceTask;
 use rod::modes::tempo::TempoTask;
+use rod::modes::tide::TideTask;
+use rod::modes::trace::TraceTask;
 use rod::modes::ModeControls;
 use rod::rpc::dispatch::Dispatcher;
 use rod::shaper::Shaper;
@@ -173,7 +173,10 @@ async fn main() -> anyhow::Result<()> {
     );
 
     // ── Hardware hand-switch watcher: drives the active program as its button ──
-    tokio::spawn(rod::modes::handswitch::run(state.clone(), dispatcher.clone()));
+    tokio::spawn(rod::modes::handswitch::run(
+        state.clone(),
+        dispatcher.clone(),
+    ));
 
     // ── Transports ──
     if cfg.transports.enable_ble {

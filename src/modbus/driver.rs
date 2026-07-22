@@ -173,11 +173,7 @@ impl SerialBus {
     }
 
     /// Open a fresh Modbus RTU context on a concrete `path`.
-    fn open_ctx(
-        path: &str,
-        baud: u32,
-        slave: u8,
-    ) -> anyhow::Result<tokio_modbus::client::Context> {
+    fn open_ctx(path: &str, baud: u32, slave: u8) -> anyhow::Result<tokio_modbus::client::Context> {
         use tokio_serial::SerialPortBuilderExt;
         let builder = tokio_serial::new(path, baud)
             .data_bits(tokio_serial::DataBits::Eight)
@@ -351,7 +347,11 @@ impl<B: ModbusBus> ModbusDriver<B> {
     /// rod held, never freed. (On a vertical mount `release_brake` is already
     /// false, so the brake holds without us touching the coil.)
     pub async fn park(&mut self) -> io::Result<()> {
-        retry!(self, "servo", write_single_coil(protocol::COIL_SERVO, false))?;
+        retry!(
+            self,
+            "servo",
+            write_single_coil(protocol::COIL_SERVO, false)
+        )?;
         if self.release_brake {
             retry!(
                 self,
@@ -688,21 +688,38 @@ impl<B: ModbusBus> ModbusDriver<B> {
         let mut target = start_mm;
         while target <= max_mm + step_mm * 0.5 {
             let clamped = target.min(self.stroke_mm);
-            let actual =
-                self.move_and_wait_pend(clamped, self.peck_move_vel, self.cal_accel).await?;
+            let actual = self
+                .move_and_wait_pend(clamped, self.peck_move_vel, self.cal_accel)
+                .await?;
 
-            retry!(self, "peck_servo_off", write_single_coil(protocol::COIL_SERVO, false))?;
+            retry!(
+                self,
+                "peck_servo_off",
+                write_single_coil(protocol::COIL_SERVO, false)
+            )?;
             // Release the holding brake too — otherwise it pins the rod and masks
             // the spring-back we're trying to measure.
             if self.release_brake {
-                retry!(self, "peck_brake_off", write_single_coil(protocol::COIL_BRAKE_RELEASE, true))?;
+                retry!(
+                    self,
+                    "peck_brake_off",
+                    write_single_coil(protocol::COIL_BRAKE_RELEASE, true)
+                )?;
             }
             sleep(self.peck_release).await;
             let free_mm = self.read_status().await?.position_mm();
             if self.release_brake {
-                retry!(self, "peck_brake_on", write_single_coil(protocol::COIL_BRAKE_RELEASE, false))?;
+                retry!(
+                    self,
+                    "peck_brake_on",
+                    write_single_coil(protocol::COIL_BRAKE_RELEASE, false)
+                )?;
             }
-            retry!(self, "peck_servo_on", write_single_coil(protocol::COIL_SERVO, true))?;
+            retry!(
+                self,
+                "peck_servo_on",
+                write_single_coil(protocol::COIL_SERVO, true)
+            )?;
             {
                 self.state.write().await.servo_on = true;
             }
@@ -734,18 +751,24 @@ impl<B: ModbusBus> ModbusDriver<B> {
         };
 
         // Phase 1 — coarse
-        info!(max_mm, step = self.peck_coarse_step, "peck-probe: coarse scan");
+        info!(
+            max_mm,
+            step = self.peck_coarse_step,
+            "peck-probe: coarse scan"
+        );
         let coarse_mm = self
             .peck_scan(self.peck_coarse_step, self.peck_coarse_step, max_mm)
             .await?
-            .ok_or_else(|| {
-                anyhow::anyhow!("peck-probe: no contact found up to {max_mm:.0}mm")
-            })?;
+            .ok_or_else(|| anyhow::anyhow!("peck-probe: no contact found up to {max_mm:.0}mm"))?;
         info!(coarse_mm, "peck-probe: coarse contact");
 
         // Phase 2 — fine
         let fine_start = (coarse_mm - self.peck_fine_back).max(0.0);
-        info!(fine_start, step = self.peck_fine_step, "peck-probe: fine scan");
+        info!(
+            fine_start,
+            step = self.peck_fine_step,
+            "peck-probe: fine scan"
+        );
         let contact_mm = self
             .peck_scan(self.peck_fine_step, fine_start, coarse_mm)
             .await?
@@ -847,16 +870,16 @@ impl<B: ModbusBus> ModbusDriver<B> {
             st.alarm_code = status.almc;
             st.is_moving = status.moving();
             // Granular DSS1/DSSE bits for SSCP telemetry.
-            st.controller_ready  = status.dss1.contains(Dss1::PWR);
-            st.positioning_done  = status.dss1.contains(Dss1::PEND);
-            st.brake_released    = status.dss1.contains(Dss1::BKRL);
-            st.push_active       = status.dsse.contains(Dsse::PUSH);
-            st.emergency_stop    = status.dss1.contains(Dss1::EMGS)
-                                 || status.dsse.contains(Dsse::EMGP);
+            st.controller_ready = status.dss1.contains(Dss1::PWR);
+            st.positioning_done = status.dss1.contains(Dss1::PEND);
+            st.brake_released = status.dss1.contains(Dss1::BKRL);
+            st.push_active = status.dsse.contains(Dsse::PUSH);
+            st.emergency_stop =
+                status.dss1.contains(Dss1::EMGS) || status.dsse.contains(Dsse::EMGP);
             st.motor_voltage_low = status.dsse.contains(Dsse::MPUV);
-            st.safety_speed      = status.dss1.contains(Dss1::SFTY);
-            st.alarm_minor       = status.dss1.contains(Dss1::ALML);
-            st.alarm_major       = status.dss1.contains(Dss1::ALMH);
+            st.safety_speed = status.dss1.contains(Dss1::SFTY);
+            st.alarm_minor = status.dss1.contains(Dss1::ALML);
+            st.alarm_major = status.dss1.contains(Dss1::ALMH);
             st.hand_switch = status.hand_switch();
         }
 

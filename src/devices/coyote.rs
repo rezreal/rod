@@ -202,7 +202,11 @@ mod imp {
         };
         adapter.set_powered(true).await?;
 
-        let name = if cfg.name.is_empty() { DEFAULT_NAME } else { &cfg.name };
+        let name = if cfg.name.is_empty() {
+            DEFAULT_NAME
+        } else {
+            &cfg.name
+        };
         info!(%name, "scanning for Coyote…");
         let device = find_device(&adapter, name).await?;
         if !device.is_connected().await? {
@@ -360,8 +364,16 @@ mod tests {
 
     #[test]
     fn b0_layout_is_correct() {
-        let a = ChannelFrame { strength: 20, freq: [10, 10, 10, 10], intensity: [5, 5, 5, 5] };
-        let b = ChannelFrame { strength: 0, freq: [50, 50, 50, 50], intensity: [0, 0, 0, 0] };
+        let a = ChannelFrame {
+            strength: 20,
+            freq: [10, 10, 10, 10],
+            intensity: [5, 5, 5, 5],
+        };
+        let b = ChannelFrame {
+            strength: 0,
+            freq: [50, 50, 50, 50],
+            intensity: [0, 0, 0, 0],
+        };
         let p = encode_b0(3, &a, &b);
         assert_eq!(p[0], 0xB0);
         assert_eq!(p[1], (3 << 4) | 0x0F); // seq=3, absolute both
@@ -375,7 +387,11 @@ mod tests {
 
     #[test]
     fn b0_clamps_strength_to_device_max() {
-        let c = ChannelFrame { strength: 255, freq: [10; 4], intensity: [0; 4] };
+        let c = ChannelFrame {
+            strength: 255,
+            freq: [10; 4],
+            intensity: [0; 4],
+        };
         let p = encode_b0(0, &c, &c);
         assert_eq!(p[2], DEVICE_MAX_STRENGTH);
     }
@@ -384,7 +400,11 @@ mod tests {
     fn parse_b1_reads_current_strength() {
         assert_eq!(
             parse_b1(&[0xB1, 0x02, 15, 8]),
-            Some(CoyoteStatus { seq: 2, strength_a: 15, strength_b: 8 })
+            Some(CoyoteStatus {
+                seq: 2,
+                strength_a: 15,
+                strength_b: 8
+            })
         );
         assert_eq!(parse_b1(&[0x00, 1, 2, 3]), None); // wrong head
         assert_eq!(parse_b1(&[0xB1, 0]), None); // too short

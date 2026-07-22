@@ -437,7 +437,9 @@ pub fn build_telemetry(st: &AppState, cfg: &Config) -> Telemetry {
     };
 
     let surge = if st.surge.active {
-        Some(SurgeTelemetry { arousal: st.surge.arousal })
+        Some(SurgeTelemetry {
+            arousal: st.surge.arousal,
+        })
     } else {
         None
     };
@@ -470,7 +472,9 @@ pub fn build_telemetry(st: &AppState, cfg: &Config) -> Telemetry {
     };
 
     let tempo = if st.tempo.active {
-        Some(TempoTelemetry { period_ms: st.tempo.period_ms })
+        Some(TempoTelemetry {
+            period_ms: st.tempo.period_ms,
+        })
     } else {
         None
     };
