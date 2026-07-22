@@ -58,7 +58,7 @@ gauntlet_rest_s     = 12.0   # rest window to signal ready
 climb_checkpoints   = 5      # banked checkpoints across the range
 climb_total_s       = 90.0   # time to climb the whole range while held
 # Stillness
-stillness_tolerance_mm = 12.0  # drift from center that counts as a move
+stillness_tolerance_mm = 6.0   # drift from center that counts as a move (smaller = more sensitive)
 stillness_lives     = 5        # lives per round; the round ends when they run out
 stillness_vibration_mm = 3.0   # size of the micro-vibration feedback pulse
 stillness_debounce_ms = 2000   # min gap between vibration/life-loss events

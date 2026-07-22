@@ -7,7 +7,8 @@
 //!   * the **deadman button** — the client resends `Button { down: true }` every
 //!     ~50 ms while held; a gap longer than `deadman_timeout_ms` (or an explicit
 //!     `down: false`) counts as released. Each game reads hold/release per its
-//!     own rules; and
+//!     own rules; Stillness is the one exception — once armed it plays on its
+//!     own, since holding a button fights the "stay still" premise; and
 //!   * the **servo unlock** — with the servo off the rod moves freely by hand,
 //!     and the driver's status poll still reports `position_mm`, so we can
 //!     *sense* the user pushing/pulling it (used by Stillness).
@@ -518,13 +519,18 @@ impl GameTask {
 
     // ───────────────────────────── 4. Stillness ───────────────────────────────
 
+    /// Unlike the other four games, Stillness has no deadman-hold requirement:
+    /// asking the user to keep a button pressed while trying to stay still
+    /// works against the point of the game, and there's no motor-driven
+    /// motion here for a deadman to guard against. Play simply runs from the
+    /// moment the ready gesture completes until Stop or the last life is
+    /// spent.
     async fn stillness(&self, rx: &mut mpsc::Receiver<GameControl>) -> Exit {
         // Servo off: the rod is free in the user's hand; we only sense position.
         // Drift past tolerance costs a life and a micro-vibration warning, not
         // an instant loss — the rod itself never tugs or drives the user.
         self.servo(false).await;
         let mut tick = self.ticker();
-        let mut btn = Button::default();
         let dt = self.tick.as_secs_f32();
         let mut duration = 0.0f32;
         let mut center = self.position_mm().await;
@@ -538,16 +544,10 @@ impl GameTask {
                     None => return Exit::Closed,
                     Some(GameControl::Stop) => return Exit::Stop,
                     Some(GameControl::Start { kind }) => return Exit::Restart(kind),
-                    Some(GameControl::Button { down }) => btn.apply(down, self.deadman),
-                    // The ready gesture already happened; ignore late taps.
-                    Some(GameControl::HardwareTap) => {}
+                    // No hold to track and the ready gesture already happened.
+                    Some(GameControl::Button { .. }) | Some(GameControl::HardwareTap) => {}
                 },
-                _ = sleep_until_opt(btn.deadline), if btn.deadline.is_some() => btn.expire(),
                 _ = tick.tick() => {
-                    if !btn.held {
-                        self.publish(GamePhase::Recover, 0.0, lives, duration, false).await;
-                        continue;
-                    }
                     let pos = self.position_mm().await;
                     let dev = (pos - center).abs();
                     let frac = dev / self.g.stillness_tolerance_mm.max(0.1);
