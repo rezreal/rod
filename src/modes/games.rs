@@ -23,7 +23,7 @@ use tokio::sync::{mpsc, RwLock};
 use tokio::time::{interval, Instant, MissedTickBehavior};
 use tracing::info;
 
-use super::GameControl;
+use super::{GameControl, GameStartParams};
 use crate::config::{Config, Games};
 use crate::devices::PiuPiuControl;
 use crate::state::{ActuatorCommand, AppMode, AppState, GameKind, GamePhase};
@@ -43,7 +43,7 @@ enum Exit {
     /// Client sent Stop, or a game's own end condition fired.
     Stop,
     /// Client started a different game without stopping first.
-    Restart(GameKind),
+    Restart(GameKind, GameStartParams),
     /// Control channel closed — shut the task down.
     Closed,
 }
@@ -51,7 +51,7 @@ enum Exit {
 /// Why the arming stage ([`GameTask::await_ready`]) returned.
 enum ArmResult {
     /// The ready gesture completed and the start delay elapsed: begin `kind`.
-    Ready(GameKind),
+    Ready(GameKind, GameStartParams),
     /// Client sent Stop (or a different game's ready gesture also aborted
     /// this way) before the gesture completed.
     Stop,
@@ -136,11 +136,12 @@ impl GameTask {
         'dispatch: loop {
             match ctrl_rx.recv().await {
                 None => break,
-                Some(GameControl::Start { kind }) => {
+                Some(GameControl::Start { kind, params }) => {
                     let mut k = kind;
+                    let mut p = params;
                     loop {
-                        k = match self.await_ready(k, &mut ctrl_rx).await {
-                            ArmResult::Ready(k) => k,
+                        (k, p) = match self.await_ready(k, p, &mut ctrl_rx).await {
+                            ArmResult::Ready(k, p) => (k, p),
                             ArmResult::Stop => continue 'dispatch,
                             ArmResult::Closed => {
                                 info!("games task stopped");
@@ -148,11 +149,11 @@ impl GameTask {
                             }
                         };
                         self.begin(k).await;
-                        match self.play(k, &mut ctrl_rx).await {
+                        match self.play(k, p, &mut ctrl_rx).await {
                             // Switching games mid-play still requires its own
                             // ready gesture — arm again rather than jumping
                             // straight in.
-                            Exit::Restart(nk) => k = nk,
+                            Exit::Restart(nk, np) => { k = nk; p = np; }
                             Exit::Stop => {
                                 self.halt().await;
                                 continue 'dispatch;
@@ -177,8 +178,14 @@ impl GameTask {
     /// [`Games::ready_delay_ms`] settle) or aborts (Stop / channel close). A
     /// fresh `Start` while arming re-arms for the new kind instead of
     /// stacking gestures.
-    async fn await_ready(&self, kind: GameKind, rx: &mut mpsc::Receiver<GameControl>) -> ArmResult {
+    async fn await_ready(
+        &self,
+        kind: GameKind,
+        params: GameStartParams,
+        rx: &mut mpsc::Receiver<GameControl>,
+    ) -> ArmResult {
         let mut k = kind;
+        let mut p = params;
         'arm: loop {
             self.arm(k).await;
             let mut gate = ReadyGate::default();
@@ -192,8 +199,9 @@ impl GameTask {
                             self.disarm().await;
                             return ArmResult::Stop;
                         }
-                        Some(GameControl::Start { kind: nk }) => {
+                        Some(GameControl::Start { kind: nk, params: np }) => {
                             k = nk;
+                            p = np;
                             continue 'arm;
                         }
                         Some(GameControl::HardwareTap) if go_at.is_none() => {
@@ -209,18 +217,18 @@ impl GameTask {
                         // Deadman heartbeats and late taps don't matter before play starts.
                         Some(_) => {}
                     },
-                    _ = sleep_until_opt(go_at), if go_at.is_some() => return ArmResult::Ready(k),
+                    _ = sleep_until_opt(go_at), if go_at.is_some() => return ArmResult::Ready(k, p),
                 }
             }
         }
     }
 
-    async fn play(&self, kind: GameKind, rx: &mut mpsc::Receiver<GameControl>) -> Exit {
+    async fn play(&self, kind: GameKind, params: GameStartParams, rx: &mut mpsc::Receiver<GameControl>) -> Exit {
         match kind {
-            GameKind::EdgeRecover => self.edge_recover(rx).await,
-            GameKind::Gauntlet => self.gauntlet(rx).await,
+            GameKind::EdgeRecover => self.edge_recover(rx, params.reps).await,
+            GameKind::Gauntlet => self.gauntlet(rx, params.reps).await,
             GameKind::DeadmansClimb => self.deadmans_climb(rx).await,
-            GameKind::Stillness => self.stillness(rx).await,
+            GameKind::Stillness => self.stillness(rx, params.duration_s, params.tolerance_mm).await,
         }
     }
 
@@ -352,7 +360,7 @@ impl GameTask {
                 ctrl = rx.recv() => match ctrl {
                     None => return Some(Exit::Closed),
                     Some(GameControl::Stop) => return Some(Exit::Stop),
-                    Some(GameControl::Start { kind }) => return Some(Exit::Restart(kind)),
+                    Some(GameControl::Start { kind, params }) => return Some(Exit::Restart(kind, params)),
                     // Nothing else matters while settling into position.
                     Some(_) => {}
                 },
@@ -416,7 +424,7 @@ impl GameTask {
 
     // ─────────────────────────── 1. Edge & Recover ────────────────────────────
 
-    async fn edge_recover(&self, rx: &mut mpsc::Receiver<GameControl>) -> Exit {
+    async fn edge_recover(&self, rx: &mut mpsc::Receiver<GameControl>, reps_target: Option<u32>) -> Exit {
         self.servo(true).await;
         let mut tick = self.ticker();
         let mut btn = Button::default();
@@ -433,7 +441,7 @@ impl GameTask {
                 ctrl = rx.recv() => match ctrl {
                     None => return Exit::Closed,
                     Some(GameControl::Stop) => return Exit::Stop,
-                    Some(GameControl::Start { kind }) => return Exit::Restart(kind),
+                    Some(GameControl::Start { kind, params }) => return Exit::Restart(kind, params),
                     Some(GameControl::Button { down }) => btn.apply(down, self.deadman),
                     // The ready gesture already happened; ignore late taps.
                     Some(GameControl::HardwareTap) => {}
@@ -446,16 +454,24 @@ impl GameTask {
                 }
                 _ = tick.tick() => {
                     duration += dt;
+                    let mut won = false;
                     let phase = if btn.held {
                         intensity = (intensity + dt / self.g.edge_climb_s.max(0.1)).min(1.0);
                         GamePhase::Active
                     } else {
                         // Count an edge when releasing from a high intensity.
-                        if prev_held && intensity > 0.5 { edges += 1; }
+                        if prev_held && intensity > 0.5 {
+                            edges += 1;
+                            if reps_target.is_some_and(|t| edges >= t) { won = true; }
+                        }
                         intensity = (intensity - self.g.edge_backoff_rate * dt).max(0.0);
                         GamePhase::Recover
                     };
                     prev_held = btn.held;
+                    if won {
+                        self.publish(GamePhase::Win, 1.0, edges, duration, btn.held).await;
+                        return Exit::Stop;
+                    }
                     self.publish(phase, intensity, edges, duration, btn.held).await;
                 }
             }
@@ -464,7 +480,7 @@ impl GameTask {
 
     // ───────────────────────────── 2. Gauntlet ────────────────────────────────
 
-    async fn gauntlet(&self, rx: &mut mpsc::Receiver<GameControl>) -> Exit {
+    async fn gauntlet(&self, rx: &mut mpsc::Receiver<GameControl>, reps_target: Option<u32>) -> Exit {
         let mut tick = self.ticker();
         let mut btn = Button::default();
         let dt = self.tick.as_secs_f32();
@@ -483,7 +499,7 @@ impl GameTask {
                 ctrl = rx.recv() => match ctrl {
                     None => return Exit::Closed,
                     Some(GameControl::Stop) => return Exit::Stop,
-                    Some(GameControl::Start { kind }) => return Exit::Restart(kind),
+                    Some(GameControl::Start { kind, params }) => return Exit::Restart(kind, params),
                     Some(GameControl::Button { down }) => btn.apply(down, self.deadman),
                     // The ready gesture already happened; ignore late taps.
                     Some(GameControl::HardwareTap) => {}
@@ -511,6 +527,10 @@ impl GameTask {
                             phase_left = self.g.gauntlet_rest_s;
                             next = None;
                             self.servo(false).await;
+                            if reps_target.is_some_and(|t| completed >= t) {
+                                self.publish(GamePhase::Win, 1.0, completed, duration, btn.held).await;
+                                return Exit::Stop;
+                            }
                         }
                         self.publish(GamePhase::Active, 0.85, completed, duration, btn.held).await;
                     } else {
@@ -553,7 +573,7 @@ impl GameTask {
                 ctrl = rx.recv() => match ctrl {
                     None => return Exit::Closed,
                     Some(GameControl::Stop) => return Exit::Stop,
-                    Some(GameControl::Start { kind }) => return Exit::Restart(kind),
+                    Some(GameControl::Start { kind, params }) => return Exit::Restart(kind, params),
                     Some(GameControl::Button { down }) => btn.apply(down, self.deadman),
                     // The ready gesture already happened; ignore late taps.
                     Some(GameControl::HardwareTap) => {}
@@ -601,7 +621,12 @@ impl GameTask {
     /// [`GameTask::move_to_and_settle`]) so the player has a known point to
     /// hold rather than wherever the rod happened to be left; once settled
     /// there, play runs on its own until Stop or the last life is spent.
-    async fn stillness(&self, rx: &mut mpsc::Receiver<GameControl>) -> Exit {
+    async fn stillness(
+        &self,
+        rx: &mut mpsc::Receiver<GameControl>,
+        duration_target: Option<f32>,
+        tolerance_override: Option<f32>,
+    ) -> Exit {
         self.servo(true).await;
         let start_pos = self.g.stillness_start_pct.clamp(0.0, 1.0) * self.stroke_mm;
         if let Some(exit) = self
@@ -621,6 +646,9 @@ impl GameTask {
         let mut duration = 0.0f32;
         let mut center = self.position_mm().await;
         let mut lives = self.g.stillness_lives.max(1);
+        let tolerance_mm = tolerance_override
+            .unwrap_or(self.g.stillness_tolerance_mm)
+            .max(0.1);
         let debounce = Duration::from_millis(self.g.stillness_debounce_ms.max(1));
         let mut cooldown_until: Option<Instant> = None;
 
@@ -629,16 +657,16 @@ impl GameTask {
                 ctrl = rx.recv() => match ctrl {
                     None => return Exit::Closed,
                     Some(GameControl::Stop) => return Exit::Stop,
-                    Some(GameControl::Start { kind }) => return Exit::Restart(kind),
+                    Some(GameControl::Start { kind, params }) => return Exit::Restart(kind, params),
                     // No hold to track and the ready gesture already happened.
                     Some(GameControl::Button { .. }) | Some(GameControl::HardwareTap) => {}
                 },
                 _ = tick.tick() => {
                     let pos = self.position_mm().await;
                     let dev = (pos - center).abs();
-                    let frac = dev / self.g.stillness_tolerance_mm.max(0.1);
+                    let frac = dev / tolerance_mm;
                     let cooled_down = cooldown_until.map_or(true, |t| Instant::now() >= t);
-                    if dev > self.g.stillness_tolerance_mm && cooled_down {
+                    if dev > tolerance_mm && cooled_down {
                         // Moved too far — buzz a warning, spend a life, re-anchor
                         // so the next attempt starts from where the hand is now.
                         lives -= 1;
@@ -652,8 +680,12 @@ impl GameTask {
                         self.publish(GamePhase::Slip, frac, lives, duration, true).await;
                         continue;
                     }
-                    if dev <= self.g.stillness_tolerance_mm {
+                    if dev <= tolerance_mm {
                         duration += dt;
+                    }
+                    if duration_target.is_some_and(|t| duration >= t) {
+                        self.publish(GamePhase::Win, 1.0, lives, duration, true).await;
+                        return Exit::Stop;
                     }
                     self.publish(GamePhase::Hold, frac, lives, duration, true).await;
                 }
@@ -761,6 +793,7 @@ mod tests {
         let (state, ctrl, mut cmd_rx, h) = spawn();
         ctrl.send(GameControl::Start {
             kind: GameKind::EdgeRecover,
+            params: GameStartParams::default(),
         })
         .await
         .unwrap();
@@ -796,6 +829,7 @@ mod tests {
         let (state, ctrl, mut cmd_rx, h) = spawn();
         ctrl.send(GameControl::Start {
             kind: GameKind::EdgeRecover,
+            params: GameStartParams::default(),
         })
         .await
         .unwrap();
@@ -820,6 +854,7 @@ mod tests {
         let (state, ctrl, mut cmd_rx, h) = spawn();
         ctrl.send(GameControl::Start {
             kind: GameKind::Gauntlet,
+            params: GameStartParams::default(),
         })
         .await
         .unwrap();
@@ -867,6 +902,7 @@ mod tests {
         let (state, ctrl, mut cmd_rx, h) = spawn_stillness();
         ctrl.send(GameControl::Start {
             kind: GameKind::Stillness,
+            params: GameStartParams::default(),
         })
         .await
         .unwrap();
@@ -973,6 +1009,7 @@ mod tests {
         state.write().await.piupiu.connected = true;
         ctrl.send(GameControl::Start {
             kind: GameKind::DeadmansClimb,
+            params: GameStartParams::default(),
         })
         .await
         .unwrap();
@@ -1011,6 +1048,7 @@ mod tests {
         // No `state.piupiu.connected = true` — stays disconnected.
         ctrl.send(GameControl::Start {
             kind: GameKind::DeadmansClimb,
+            params: GameStartParams::default(),
         })
         .await
         .unwrap();
@@ -1023,6 +1061,152 @@ mod tests {
             piupiu_rx.try_recv().is_err(),
             "no PiuPiu connected: the win celebration must stay silent"
         );
+
+        drop(ctrl);
+        let _ = h.await;
+    }
+
+    #[tokio::test(start_paused = true)]
+    async fn edge_recover_wins_at_target_reps() {
+        let (state, ctrl, mut cmd_rx, h) = spawn();
+        ctrl.send(GameControl::Start {
+            kind: GameKind::EdgeRecover,
+            params: GameStartParams {
+                reps: Some(1),
+                ..Default::default()
+            },
+        })
+        .await
+        .unwrap();
+        ready(&ctrl, &mut cmd_rx).await;
+
+        // Climb well past the edge threshold (intensity > 0.5, climb_s = 1.0).
+        // 10 beats rather than the bare minimum 6: `interval`'s first tick
+        // fires immediately on creation, so beat-count and tick-count aren't
+        // perfectly 1:1 — the same margin `edge_recover_climbs_while_held`
+        // uses above.
+        for _ in 0..10 {
+            beat(&ctrl, &mut cmd_rx, true).await;
+        }
+        // ...then explicitly release (rather than waiting out the deadman):
+        // the edge is counted and the 1-rep target is hit.
+        ctrl.send(GameControl::Button { down: false }).await.unwrap();
+        beat(&ctrl, &mut cmd_rx, false).await;
+
+        let g = state.read().await.game.clone();
+        assert!(!g.active, "round should have ended on reaching the rep target");
+        assert_eq!(g.level, 1, "one edge counted");
+
+        drop(ctrl);
+        let _ = h.await;
+    }
+
+    #[tokio::test(start_paused = true)]
+    async fn gauntlet_wins_at_target_reps() {
+        let (state, ctrl, mut cmd_rx, h) = spawn();
+        ctrl.send(GameControl::Start {
+            kind: GameKind::Gauntlet,
+            params: GameStartParams {
+                reps: Some(1),
+                ..Default::default()
+            },
+        })
+        .await
+        .unwrap();
+        ready(&ctrl, &mut cmd_rx).await;
+
+        // Settle into rest, then hold through the whole first work interval
+        // (work_s = 1.0s => 10 ticks at dt = 0.1s), plenty of margin.
+        for _ in 0..2 {
+            beat(&ctrl, &mut cmd_rx, false).await;
+        }
+        for _ in 0..15 {
+            beat(&ctrl, &mut cmd_rx, true).await;
+        }
+
+        let g = state.read().await.game.clone();
+        assert!(!g.active, "round should have ended on completing the target interval");
+        assert_eq!(g.level, 1, "one interval completed");
+
+        drop(ctrl);
+        let _ = h.await;
+    }
+
+    #[tokio::test(start_paused = true)]
+    async fn stillness_wins_at_target_duration() {
+        let (state, ctrl, mut cmd_rx, h) = spawn_stillness();
+        ctrl.send(GameControl::Start {
+            kind: GameKind::Stillness,
+            params: GameStartParams {
+                duration_s: Some(0.3),
+                ..Default::default()
+            },
+        })
+        .await
+        .unwrap();
+        for _ in 0..3 {
+            ctrl.send(GameControl::HardwareTap).await.unwrap();
+            tokio::task::yield_now().await;
+        }
+        // Ready-delay settle, servo-on settle, and the approach move to the
+        // start position are sequential sleeps — step forward in small
+        // increments so each timer gets a chance to register (see
+        // `stillness_moves_to_start_then_tracks_drift_without_holding`).
+        for _ in 0..10 {
+            tokio::time::advance(Duration::from_millis(20)).await;
+            tokio::task::yield_now().await;
+        }
+        while cmd_rx.try_recv().is_ok() {}
+
+        // Stay put for a few ticks (dt = 0.1s) to clear the 0.3s target.
+        for _ in 0..4 {
+            beat(&ctrl, &mut cmd_rx, false).await;
+        }
+
+        let g = state.read().await.game.clone();
+        assert!(!g.active, "round should have ended on reaching the target duration");
+
+        drop(ctrl);
+        let _ = h.await;
+    }
+
+    #[tokio::test(start_paused = true)]
+    async fn stillness_uses_overridden_tolerance() {
+        let (state, ctrl, mut cmd_rx, h) = spawn_stillness();
+        ctrl.send(GameControl::Start {
+            kind: GameKind::Stillness,
+            params: GameStartParams {
+                tolerance_mm: Some(1.0),
+                ..Default::default()
+            },
+        })
+        .await
+        .unwrap();
+        for _ in 0..3 {
+            ctrl.send(GameControl::HardwareTap).await.unwrap();
+            tokio::task::yield_now().await;
+        }
+        // Ready-delay settle, servo-on settle, and the approach move to the
+        // start position are sequential sleeps — step forward in small
+        // increments so each timer gets a chance to register (see
+        // `stillness_moves_to_start_then_tracks_drift_without_holding`).
+        for _ in 0..10 {
+            tokio::time::advance(Duration::from_millis(20)).await;
+            tokio::task::yield_now().await;
+        }
+        while cmd_rx.try_recv().is_ok() {}
+
+        // Drift 2mm — inside the configured default (5mm, see
+        // `spawn_stillness`) but past the 1mm override — then let it settle
+        // (the round re-centers on the new spot after a slip, so only the
+        // one drift should cost a life).
+        state.write().await.position_mm = 2.0;
+        for _ in 0..3 {
+            beat(&ctrl, &mut cmd_rx, false).await;
+        }
+
+        let g = state.read().await.game.clone();
+        assert_eq!(g.level, 2, "one life lost out of spawn_stillness's 3 from the 1mm-override drift");
 
         drop(ctrl);
         let _ = h.await;

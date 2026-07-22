@@ -42,6 +42,113 @@ const METER_LABELS: Record<GameKind, string> = {
 /** Games with no deadman-hold requirement — they play on their own once armed. */
 const NO_HOLD_GAMES: readonly GameKind[] = ['stillness']
 
+/** Games with a rep-count target (Edge & Recover: edges, Gauntlet: intervals). */
+const REPS_GAMES: readonly GameKind[] = ['edge_recover', 'gauntlet']
+const REPS_LABEL: Partial<Record<GameKind, string>> = {
+  edge_recover: 'Target edges',
+  gauntlet:     'Target intervals',
+}
+
+// Defaults mirror the bridge's configured fallbacks (src/config.rs) so the
+// sliders start somewhere sensible; the bridge only overrides them when a
+// value is actually sent.
+const DEFAULT_REPS = 5
+const DEFAULT_STILLNESS_DURATION_S = 120
+const DEFAULT_STILLNESS_TOLERANCE_MM = 6
+
+function RangeSlider({
+  label,
+  value,
+  min = 0,
+  max = 1,
+  step = 0.01,
+  onChange,
+  onCommit,
+  formatValue,
+  disabled = false,
+}: {
+  label: string
+  value: number
+  min?: number
+  max?: number
+  step?: number
+  onChange: (v: number) => void
+  onCommit: (v: number) => void
+  formatValue?: (v: number) => string
+  disabled?: boolean
+}) {
+  const pct = ((value - min) / (max - min)) * 100
+
+  return (
+    <div className={`flex flex-col gap-2 ${disabled ? 'opacity-40 pointer-events-none' : ''}`}>
+      <div className="flex items-center justify-between">
+        <span className="text-sm text-slate-400">{label}</span>
+        <span className="text-sm font-mono font-semibold text-fuchsia-400">
+          {formatValue ? formatValue(value) : `${Math.round(value * 100)}%`}
+        </span>
+      </div>
+      <div className="relative h-10 flex items-center">
+        <div className="absolute inset-x-0 h-2 bg-slate-700 rounded-full">
+          <div
+            className="h-full rounded-full bg-fuchsia-500"
+            style={{ width: `${pct}%` }}
+          />
+        </div>
+        <input
+          type="range"
+          min={min}
+          max={max}
+          step={step}
+          value={value}
+          disabled={disabled}
+          onChange={(e) => onChange(parseFloat(e.target.value))}
+          onPointerUp={(e) => onCommit(parseFloat((e.target as HTMLInputElement).value))}
+          className="absolute inset-0 w-full h-full opacity-0 cursor-pointer disabled:cursor-default"
+          style={{ touchAction: 'none' }}
+        />
+        <div
+          className="absolute w-6 h-6 rounded-full bg-fuchsia-400 border-2 border-fuchsia-300 shadow-lg pointer-events-none"
+          style={{ left: `calc(${pct}% - 12px)` }}
+        />
+      </div>
+    </div>
+  )
+}
+
+/** Two-way "Endless / Set target" switch gating an optional win-condition slider. */
+function GoalToggle({
+  enabled,
+  onToggle,
+  disabled = false,
+}: {
+  enabled: boolean
+  onToggle: (v: boolean) => void
+  disabled?: boolean
+}) {
+  return (
+    <div className={`flex gap-1 p-0.5 rounded-lg bg-slate-800 ${disabled ? 'opacity-40 pointer-events-none' : ''}`}>
+      <button
+        type="button"
+        onClick={() => onToggle(false)}
+        className={`flex-1 py-1.5 rounded-md text-xs font-medium transition-colors ${
+          !enabled ? 'bg-slate-700 text-slate-100' : 'text-slate-500 hover:text-slate-300'
+        }`}
+      >
+        Endless
+      </button>
+      <button
+        type="button"
+        onClick={() => onToggle(true)}
+        className={`flex-1 py-1.5 rounded-md text-xs font-medium transition-colors ${
+          enabled ? 'bg-fuchsia-500/30 text-fuchsia-200' : 'text-slate-500 hover:text-slate-300'
+        }`}
+      >
+        Set target
+      </button>
+    </div>
+  )
+}
+
 const PHASE_STYLES: Record<GamePhase, string> = {
   idle:    'bg-slate-700 text-slate-400',
   armed:   'bg-amber-500/20 text-amber-300 border border-amber-500/30',
@@ -85,6 +192,15 @@ export function GamesControls() {
   const [selected, setSelected] = useState<GameKind>('edge_recover')
   const [showManual, setShowManual] = useState(false)
 
+  // Pre-start parameters — reps target (Edge & Recover / Gauntlet) and
+  // duration target / sensitivity (Stillness). Only take effect on the next
+  // Start; the running game keeps whatever it was armed with.
+  const [repsEnabled, setRepsEnabled] = useState(false)
+  const [reps, setReps] = useState(DEFAULT_REPS)
+  const [durationEnabled, setDurationEnabled] = useState(false)
+  const [stillnessDuration, setStillnessDuration] = useState(DEFAULT_STILLNESS_DURATION_S)
+  const [stillnessTolerance, setStillnessTolerance] = useState(DEFAULT_STILLNESS_TOLERANCE_MM)
+
   // Stable ref so the setInterval closure always calls the latest send().
   const sendRef = useRef(send)
   sendRef.current = send
@@ -124,7 +240,13 @@ export function GamesControls() {
       stopHold()
       send({ type: 'game_stop' })
     } else {
-      send({ type: 'game_start', kind: selected })
+      send({
+        type: 'game_start',
+        kind: selected,
+        reps: REPS_GAMES.includes(selected) && repsEnabled ? Math.round(reps) : undefined,
+        durationS: selected === 'stillness' && durationEnabled ? stillnessDuration : undefined,
+        toleranceMm: selected === 'stillness' ? stillnessTolerance : undefined,
+      })
     }
   }
 
@@ -187,6 +309,61 @@ export function GamesControls() {
             )
           })}
         </div>
+      </div>
+
+      {/* Pre-start parameters for the selected game — disabled while active */}
+      <div className={`flex flex-col gap-4 ${isActive ? 'opacity-40 pointer-events-none' : ''}`}>
+        <span className="text-[10px] font-semibold uppercase tracking-widest text-slate-500">
+          Settings · {GAME_NAMES[selected]}
+        </span>
+
+        {REPS_GAMES.includes(selected) && (
+          <div className="flex flex-col gap-2">
+            <GoalToggle enabled={repsEnabled} onToggle={setRepsEnabled} />
+            {repsEnabled && (
+              <RangeSlider
+                label={REPS_LABEL[selected] ?? 'Target reps'}
+                value={reps}
+                min={1}
+                max={20}
+                step={1}
+                formatValue={(v) => `${Math.round(v)}`}
+                onChange={setReps}
+                onCommit={setReps}
+              />
+            )}
+          </div>
+        )}
+
+        {selected === 'stillness' && (
+          <>
+            <RangeSlider
+              label="Sensitivity"
+              value={stillnessTolerance}
+              min={2}
+              max={15}
+              step={0.5}
+              formatValue={(v) => `${v.toFixed(1)} mm tolerance`}
+              onChange={setStillnessTolerance}
+              onCommit={setStillnessTolerance}
+            />
+            <div className="flex flex-col gap-2">
+              <GoalToggle enabled={durationEnabled} onToggle={setDurationEnabled} />
+              {durationEnabled && (
+                <RangeSlider
+                  label="Target duration"
+                  value={stillnessDuration}
+                  min={30}
+                  max={600}
+                  step={15}
+                  formatValue={formatDuration}
+                  onChange={setStillnessDuration}
+                  onCommit={setStillnessDuration}
+                />
+              )}
+            </div>
+          </>
+        )}
       </div>
 
       {/* Recalibrate — quick access so users don't have to leave for Settings */}

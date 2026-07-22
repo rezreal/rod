@@ -36,8 +36,8 @@ mod imp {
     use super::*;
     use crate::config::Config;
     use crate::modes::{
-        CycleControl, DrillControl, EchoControl, GameControl, ImpaleControl, LearnControl,
-        ModeControls, PlumbControl, PulseControl, RampControl, SurgeControl, TempoControl,
+        CycleControl, DrillControl, EchoControl, GameControl, GameStartParams, ImpaleControl,
+        LearnControl, ModeControls, PlumbControl, PulseControl, RampControl, SurgeControl, TempoControl,
         TideControl, TraceControl,
     };
     use crate::rpc::dispatch::Dispatcher;
@@ -464,12 +464,15 @@ mod imp {
                     .await
                     .map_err(|e| e.to_string())?;
             }
-            Command::GameStart { kind } => {
+            Command::GameStart { kind, reps, duration_s, tolerance_mm } => {
                 let k = crate::state::GameKind::parse(&kind)
                     .ok_or_else(|| format!("unknown game kind {kind:?}"))?;
                 modes
                     .game
-                    .send(GameControl::Start { kind: k })
+                    .send(GameControl::Start {
+                        kind: k,
+                        params: GameStartParams { reps, duration_s, tolerance_mm },
+                    })
                     .await
                     .map_err(|e| e.to_string())?;
             }

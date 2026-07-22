@@ -291,8 +291,11 @@ export interface RampNudgeCommand   { type: 'ramp_nudge'; delta: number }
 /** Exit ramp mode — stop motion, release servo. */
 export interface RampStopCommand    { type: 'ramp_stop' }
 
-/** Start an endurance game by kind. */
-export interface GameStartCommand   { type: 'game_start'; kind: GameKind }
+/** Start an endurance game by kind, with optional pre-start goal overrides.
+ *  `reps` (Edge & Recover / Gauntlet) and `durationS` (Stillness) are win
+ *  targets — omit for endless play, the pre-existing default. `toleranceMm`
+ *  (Stillness) overrides the configured drift sensitivity. */
+export interface GameStartCommand   { type: 'game_start'; kind: GameKind; reps?: number; durationS?: number; toleranceMm?: number }
 /** Deadman button state for the active game. Resend `down: true` every ~50 ms
  *  while held; send `down: false` on release. */
 export interface GameButtonCommand  { type: 'game_button'; down: boolean }
