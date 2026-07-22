@@ -9,7 +9,6 @@ export type Direction = 'extending' | 'retracting' | 'stopped'
 /** Endurance game identifiers (snake_case, matches the GameStart command). */
 export type GameKind =
   | 'edge_recover'
-  | 'hold_the_line'
   | 'gauntlet'
   | 'deadmans_climb'
   | 'stillness'
@@ -208,7 +207,7 @@ export interface Telemetry {
    *  exceeds maxDepthMm (may equal it). */
   comfortableDepthMm: number
   /** Max-depth ceiling (mm) for modes that press toward or hold a single far
-   *  point (ramp, HDSP, HSP, learn, drill, impale, echo, Hold the Line).
+   *  point (ramp, HDSP, HSP, learn, drill, impale, echo).
    *  Locked while a program is running. */
   maxDepthMm: number
   /** Work-piece origin (mm) from the last calibration, if any. */

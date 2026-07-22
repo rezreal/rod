@@ -27,23 +27,6 @@ export const GAME_DOCS: GameDoc[] = [
     meta: 'Level = edges counted.',
   },
   {
-    kind: 'hold_the_line',
-    name: 'Hold the Line',
-    tagline: 'Isometric resistance',
-    rules: [
-      'The motor presses the rod outward with a force that ramps up the longer you stay engaged; you resist by hand.',
-      'Hold the button to engage.',
-      'If the rod gets driven past your line you lose ground (a “line lost”) and it re-anchors forward.',
-      'Release to yield and relax the push.',
-      'Goal: hold the line as long as you can.',
-    ],
-    operate: [
-      'Start, then hold to engage and resist the push.',
-      'Release to relax. Stop to end the round.',
-    ],
-    meta: 'Level = lines lost (lower is better).',
-  },
-  {
     kind: 'gauntlet',
     name: 'The Gauntlet',
     tagline: 'Interval training',

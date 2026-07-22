@@ -22,7 +22,7 @@ use std::sync::Arc;
 use crate::config::{Config, MotionProfile};
 use crate::modbus::protocol::{self, Dss1, Dsse, MoveCommand, StatusBlock};
 use crate::rpc::{self, HdspPlayState, NotificationHdspChanged, RpcMessage};
-use crate::state::{ActuatorCommand, AppMode, AppState, BridgeCommand, GameKind};
+use crate::state::{ActuatorCommand, AppMode, AppState, BridgeCommand};
 
 /// Inter-frame "silent interval" for Modbus RTU at 19200 baud (~2 ms).
 const SILENT_INTERVAL: Duration = Duration::from_millis(2);
@@ -490,8 +490,8 @@ impl<B: ModbusBus> ModbusDriver<B> {
     /// in a fixed zone (HAMP, cycle, pulse, plumb, surge, tide, trace, tempo,
     /// and the fixed-zone games — edge & recover, gauntlet, deadman's climb,
     /// stillness) use `comfortable_depth_mm`. Modes that press toward or hold a
-    /// single far point (ramp, HDSP, HSP, learn, drill, impale, echo, and the
-    /// Hold the Line game) use `max_depth_mm`.
+    /// single far point (ramp, HDSP, HSP, learn, drill, impale, echo) use
+    /// `max_depth_mm`.
     ///
     /// Whatever the ceiling scaling produces is then hard-clamped away from
     /// the far physical stop by `HARD_STOP_MARGIN_MM` — this is the single
@@ -509,7 +509,6 @@ impl<B: ModbusBus> ModbusDriver<B> {
             | AppMode::Drill
             | AppMode::Impale
             | AppMode::Echo => st.max_depth_mm,
-            AppMode::Game if st.game.kind == Some(GameKind::HoldTheLine) => st.max_depth_mm,
             _ => st.comfortable_depth_mm,
         };
         let scaled = if ceiling > 0.0 && ceiling < self.stroke_mm {

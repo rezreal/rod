@@ -559,22 +559,6 @@ pub struct Games {
     #[serde(default = "default_game_backoff_rate")]
     pub edge_backoff_rate: f32,
 
-    // ── Hold the Line ──
-    /// Push thrust at the start and end of the ramp (percent of rated thrust).
-    #[serde(default = "default_game_push_start_pct")]
-    pub hold_push_start_pct: u16,
-    #[serde(default = "default_game_push_max_pct")]
-    pub hold_push_max_pct: u16,
-    /// Time for thrust to climb from start to max (s).
-    #[serde(default = "default_game_push_ramp_s")]
-    pub hold_push_ramp_s: f32,
-    /// How far the rod may advance past the line before a "ground lost" (mm).
-    #[serde(default = "default_game_line_advance_mm")]
-    pub hold_line_advance_mm: f32,
-    /// Push approach velocity (mm/s) — gentle.
-    #[serde(default = "default_game_push_velocity")]
-    pub hold_push_velocity_mm_s: f32,
-
     // ── Gauntlet ──
     /// First work interval length (s); each completed round adds `work_growth_s`.
     #[serde(default = "default_game_work_s")]
@@ -624,11 +608,6 @@ impl Default for Games {
             ready_delay_ms: default_game_ready_delay_ms(),
             edge_climb_s: default_game_climb_s(),
             edge_backoff_rate: default_game_backoff_rate(),
-            hold_push_start_pct: default_game_push_start_pct(),
-            hold_push_max_pct: default_game_push_max_pct(),
-            hold_push_ramp_s: default_game_push_ramp_s(),
-            hold_line_advance_mm: default_game_line_advance_mm(),
-            hold_push_velocity_mm_s: default_game_push_velocity(),
             gauntlet_work_s: default_game_work_s(),
             gauntlet_work_growth_s: default_game_work_growth_s(),
             gauntlet_rest_s: default_game_rest_s(),
@@ -1206,21 +1185,6 @@ fn default_game_climb_s() -> f32 {
 }
 fn default_game_backoff_rate() -> f32 {
     0.6
-}
-fn default_game_push_start_pct() -> u16 {
-    10
-}
-fn default_game_push_max_pct() -> u16 {
-    40
-}
-fn default_game_push_ramp_s() -> f32 {
-    90.0
-}
-fn default_game_line_advance_mm() -> f32 {
-    15.0
-}
-fn default_game_push_velocity() -> f32 {
-    8.0
 }
 fn default_game_work_s() -> f32 {
     15.0

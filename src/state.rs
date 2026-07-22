@@ -135,8 +135,6 @@ impl LearnPhase {
 pub enum GameKind {
     /// Climb intensity while the button is held; release to back off ("edge").
     EdgeRecover,
-    /// Resist the servo's push-motion by hand; thrust ramps up over time.
-    HoldTheLine,
     /// Alternating work/rest intervals, each gated by a button press.
     Gauntlet,
     /// Banked climb: lapses drop you one checkpoint, not back to zero.
@@ -149,7 +147,6 @@ impl GameKind {
     pub fn as_str(self) -> &'static str {
         match self {
             GameKind::EdgeRecover => "edge_recover",
-            GameKind::HoldTheLine => "hold_the_line",
             GameKind::Gauntlet => "gauntlet",
             GameKind::DeadmansClimb => "deadmans_climb",
             GameKind::Stillness => "stillness",
@@ -159,7 +156,6 @@ impl GameKind {
     pub fn parse(s: &str) -> Option<GameKind> {
         Some(match s {
             "edge_recover" => GameKind::EdgeRecover,
-            "hold_the_line" => GameKind::HoldTheLine,
             "gauntlet" => GameKind::Gauntlet,
             "deadmans_climb" => GameKind::DeadmansClimb,
             "stillness" => GameKind::Stillness,
@@ -181,7 +177,7 @@ pub enum GamePhase {
     Recover,
     /// Rest interval (Gauntlet) — servo free.
     Rest,
-    /// Holding ground (Hold the Line) or holding still (Stillness).
+    /// Holding still (Stillness).
     Hold,
     /// Lost ground / moved too much this round.
     Slip,
@@ -532,7 +528,7 @@ pub struct AppState {
     pub comfortable_depth_mm: f32,
     /// Depth ceiling for modes that press toward or hold a single far point
     /// rather than oscillating in a fixed zone: ramp, HDSP, HSP, learn, drill,
-    /// impale, echo, and the Hold the Line game rescale into `[0, max_depth]`
+    /// impale, echo rescale into `[0, max_depth]`
     /// the same way. 0.0 means "unset → full stroke". Set at boot (from the
     /// persisted value or stroke) and via `BridgeCommand::SetMaxDepth` — which
     /// is refused while a program is running (see `AppState::program_running`)
@@ -682,7 +678,7 @@ pub enum ActuatorCommand {
     /// `push_current_pct` so the rod presses with a bounded force instead of
     /// faulting on resistance. The user's resistance shows up as `push_active`
     /// (DSSE.PUSH) with `position_mm` held short of the target. Used by the
-    /// "Hold the Line" game; the bridge's calibration uses the same primitive.
+    /// bridge's push-to-contact calibration.
     MovePush {
         pos_mm: f32,
         vel_mm_s: f32,

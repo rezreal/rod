@@ -1,7 +1,7 @@
 //! Endurance games — a family of button-gated programs that measure how long
 //! the user stays in control (SSCP extension, not part of Handy FW4).
 //!
-//! All five games run in this one task, parameterised by [`GameKind`]; only one
+//! All four games run in this one task, parameterised by [`GameKind`]; only one
 //! is active at a time. They share two user inputs:
 //!
 //!   * the **deadman button** — the client resends `Button { down: true }` every
@@ -10,7 +10,7 @@
 //!     own rules; and
 //!   * the **servo unlock** — with the servo off the rod moves freely by hand,
 //!     and the driver's status poll still reports `position_mm`, so we can
-//!     *sense* the user pushing/pulling it (used by Hold the Line and Stillness).
+//!     *sense* the user pushing/pulling it (used by Stillness).
 //!
 //! Live status (`phase`, `intensity`, `level`, `score_s`) is published to
 //! [`AppState::game`] for the UI; the web manual documents each game's rules.
@@ -208,7 +208,6 @@ impl GameTask {
     async fn play(&self, kind: GameKind, rx: &mut mpsc::Receiver<GameControl>) -> Exit {
         match kind {
             GameKind::EdgeRecover => self.edge_recover(rx).await,
-            GameKind::HoldTheLine => self.hold_the_line(rx).await,
             GameKind::Gauntlet => self.gauntlet(rx).await,
             GameKind::DeadmansClimb => self.deadmans_climb(rx).await,
             GameKind::Stillness => self.stillness(rx).await,
@@ -388,69 +387,7 @@ impl GameTask {
         }
     }
 
-    // ──────────────────────────── 2. Hold the Line ────────────────────────────
-
-    async fn hold_the_line(&self, rx: &mut mpsc::Receiver<GameControl>) -> Exit {
-        self.servo(true).await;
-        let mut tick = self.ticker();
-        let mut btn = Button::default();
-        let dt = self.tick.as_secs_f32();
-        let mut score = 0.0f32;
-        let mut engaged_s = 0.0f32;
-        let mut lines_lost = 0u32;
-        // The line the rod must not be pushed past; set on first engage.
-        let mut line: Option<f32> = None;
-        let target = self.g.zone_max * self.stroke_mm;
-
-        loop {
-            tokio::select! {
-                ctrl = rx.recv() => match ctrl {
-                    None => return Exit::Closed,
-                    Some(GameControl::Stop) => return Exit::Stop,
-                    Some(GameControl::Start { kind }) => return Exit::Restart(kind),
-                    Some(GameControl::Button { down }) => btn.apply(down, self.deadman),
-                    // The ready gesture already happened; ignore late taps.
-                    Some(GameControl::HardwareTap) => {}
-                },
-                _ = sleep_until_opt(btn.deadline), if btn.deadline.is_some() => {
-                    btn.expire();
-                    // Released: relax the push and free the rod.
-                    let _ = self.cmd_tx.send(ActuatorCommand::Stop).await;
-                    line = None;
-                }
-                _ = tick.tick() => {
-                    if !btn.held {
-                        self.publish(GamePhase::Recover, 0.0, lines_lost, score, false).await;
-                        continue;
-                    }
-                    let pos = self.position_mm().await;
-                    let line = line.get_or_insert(pos);
-                    engaged_s += dt;
-                    score += dt;
-                    // Thrust ramps with engaged time.
-                    let frac = (engaged_s / self.g.hold_push_ramp_s.max(0.1)).min(1.0);
-                    let push = self.g.hold_push_start_pct
-                        + ((self.g.hold_push_max_pct - self.g.hold_push_start_pct) as f32 * frac) as u16;
-                    let _ = self.cmd_tx.send(ActuatorCommand::MovePush {
-                        pos_mm: target,
-                        vel_mm_s: self.g.hold_push_velocity_mm_s,
-                        accel_g: self.g.accel_g,
-                        push_current_pct: push,
-                    }).await;
-                    // Ground lost if the rod is driven past the line.
-                    let mut phase = GamePhase::Hold;
-                    if pos > *line + self.g.hold_line_advance_mm {
-                        lines_lost += 1;
-                        *line = pos; // re-anchor forward
-                        phase = GamePhase::Slip;
-                    }
-                    self.publish(phase, frac, lines_lost, score, true).await;
-                }
-            }
-        }
-    }
-
-    // ───────────────────────────── 3. Gauntlet ────────────────────────────────
+    // ───────────────────────────── 2. Gauntlet ────────────────────────────────
 
     async fn gauntlet(&self, rx: &mut mpsc::Receiver<GameControl>) -> Exit {
         let mut tick = self.ticker();
@@ -522,7 +459,7 @@ impl GameTask {
         }
     }
 
-    // ───────────────────────── 4. Deadman's Climb ─────────────────────────────
+    // ───────────────────────── 3. Deadman's Climb ─────────────────────────────
 
     async fn deadmans_climb(&self, rx: &mut mpsc::Receiver<GameControl>) -> Exit {
         self.servo(true).await;
@@ -573,7 +510,7 @@ impl GameTask {
         }
     }
 
-    // ───────────────────────────── 5. Stillness ───────────────────────────────
+    // ───────────────────────────── 4. Stillness ───────────────────────────────
 
     async fn stillness(&self, rx: &mut mpsc::Receiver<GameControl>) -> Exit {
         // Servo off: the rod is free in the user's hand; we only sense position.

@@ -50,12 +50,6 @@ tick_ms             = 100    # scoring / intensity update tick
 # Edge & Recover
 edge_climb_s        = 45.0   # time to climb 0→full while held
 edge_backoff_rate   = 0.6    # intensity fall rate when recovering (per s)
-# Hold the Line
-hold_push_start_pct = 10     # starting thrust (% rated)
-hold_push_max_pct   = 40     # thrust after the ramp
-hold_push_ramp_s    = 90.0   # time for thrust to climb start→max
-hold_line_advance_mm = 15.0  # advance past the line that counts as ground lost
-hold_push_velocity_mm_s = 8.0
 # Gauntlet
 gauntlet_work_s     = 15.0   # first work interval
 gauntlet_work_growth_s = 5.0 # each completed interval adds this

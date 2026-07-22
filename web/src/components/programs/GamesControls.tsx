@@ -16,7 +16,6 @@ const READY_TAPS = 3
 
 const GAME_NAMES: Record<GameKind, string> = {
   edge_recover:  'Edge & Recover',
-  hold_the_line: 'Hold the Line',
   gauntlet:      'The Gauntlet',
   deadmans_climb: "Deadman's Climb",
   stillness:     'Stillness',
@@ -25,7 +24,6 @@ const GAME_NAMES: Record<GameKind, string> = {
 /** Per-game label for the `level` metric (— means not used). */
 const LEVEL_LABELS: Record<GameKind, string> = {
   edge_recover:  'edges',
-  hold_the_line: 'lines lost',
   gauntlet:      'interval',
   deadmans_climb: 'checkpoint',
   stillness:     'lives left',
