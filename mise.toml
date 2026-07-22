@@ -1,5 +1,7 @@
 [tools]
 "github:docker/buildx" = { version = "0.35.0", exe = "docker-buildx" }
+# Matches .github/workflows/build.yml's dtolnay/rust-toolchain@stable + components.
+rust = { version = "stable", components = "rustfmt,clippy" }
 
 [tasks.clean]
 description = "Remove untracked build & dependency artifacts (gitignored files only)"
