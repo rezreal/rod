@@ -572,16 +572,19 @@ pub struct Games {
     pub climb_total_s: f32,
 
     // ── Stillness ──
-    /// Allowed deviation from the round's center before failure (mm).
+    /// Allowed deviation from the round's center before it counts as a move (mm).
     #[serde(default = "default_game_still_tol_mm")]
     pub stillness_tolerance_mm: f32,
-    /// Nudge size (mm) and the min/max gap between nudges (ms).
-    #[serde(default = "default_game_still_nudge_mm")]
-    pub stillness_nudge_mm: f32,
-    #[serde(default = "default_game_still_nudge_min_ms")]
-    pub stillness_nudge_min_ms: u64,
-    #[serde(default = "default_game_still_nudge_max_ms")]
-    pub stillness_nudge_max_ms: u64,
+    /// Lives to start a round with; a round ends when the last one is spent.
+    #[serde(default = "default_game_still_lives")]
+    pub stillness_lives: u32,
+    /// Size of the micro-vibration feedback pulse (mm).
+    #[serde(default = "default_game_still_vibration_mm")]
+    pub stillness_vibration_mm: f32,
+    /// Minimum gap between vibration/life-loss events, even while held past
+    /// tolerance (ms) — stops one sustained drift from draining every life at once.
+    #[serde(default = "default_game_still_debounce_ms")]
+    pub stillness_debounce_ms: u64,
 }
 
 impl Default for Games {
@@ -607,9 +610,9 @@ impl Default for Games {
             climb_checkpoints: default_game_checkpoints(),
             climb_total_s: default_game_climb_total_s(),
             stillness_tolerance_mm: default_game_still_tol_mm(),
-            stillness_nudge_mm: default_game_still_nudge_mm(),
-            stillness_nudge_min_ms: default_game_still_nudge_min_ms(),
-            stillness_nudge_max_ms: default_game_still_nudge_max_ms(),
+            stillness_lives: default_game_still_lives(),
+            stillness_vibration_mm: default_game_still_vibration_mm(),
+            stillness_debounce_ms: default_game_still_debounce_ms(),
         }
     }
 }
@@ -1206,14 +1209,14 @@ fn default_game_climb_total_s() -> f32 {
 fn default_game_still_tol_mm() -> f32 {
     12.0
 }
-fn default_game_still_nudge_mm() -> f32 {
-    6.0
+fn default_game_still_lives() -> u32 {
+    5
 }
-fn default_game_still_nudge_min_ms() -> u64 {
-    1500
+fn default_game_still_vibration_mm() -> f32 {
+    3.0
 }
-fn default_game_still_nudge_max_ms() -> u64 {
-    4500
+fn default_game_still_debounce_ms() -> u64 {
+    2000
 }
 
 fn default_cycle_zone_min() -> f32 {

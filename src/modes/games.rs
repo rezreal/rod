@@ -445,15 +445,18 @@ impl GameTask {
     // ───────────────────────────── 5. Stillness ───────────────────────────────
 
     async fn stillness(&self, rx: &mut mpsc::Receiver<GameControl>) -> Exit {
-        // Servo off: the rod is free in the user's hand; we only sense position
-        // and tug it occasionally.
+        // Servo off: the rod is free in the user's hand; we only sense position.
+        // Drift past tolerance costs a life and a micro-vibration warning, not
+        // an instant loss — the rod itself never tugs or drives the user.
         self.servo(false).await;
         let mut tick = self.ticker();
         let mut btn = Button::default();
         let dt = self.tick.as_secs_f32();
         let mut score = 0.0f32;
-        let center = self.position_mm().await;
-        let mut nudge_at = Some(Instant::now() + self.next_nudge_gap());
+        let mut center = self.position_mm().await;
+        let mut lives = self.g.stillness_lives.max(1);
+        let debounce = Duration::from_millis(self.g.stillness_debounce_ms.max(1));
+        let mut cooldown_until: Option<Instant> = None;
 
         loop {
             tokio::select! {
@@ -464,47 +467,57 @@ impl GameTask {
                     Some(GameControl::Button { down }) => btn.apply(down, self.deadman),
                 },
                 _ = sleep_until_opt(btn.deadline), if btn.deadline.is_some() => btn.expire(),
-                _ = sleep_until_opt(nudge_at), if nudge_at.is_some() && btn.held => {
-                    // A tug: briefly drive the rod off-center, then free it again.
-                    let pos = self.position_mm().await;
-                    let dir = if rand::random::<bool>() { 1.0 } else { -1.0 };
-                    let target = (pos + dir * self.g.stillness_nudge_mm).clamp(0.0, self.stroke_mm);
-                    self.servo(true).await;
-                    let _ = self.cmd_tx.send(ActuatorCommand::MoveTo {
-                        pos_mm: target,
-                        vel_mm_s: self.g.max_velocity_mm_s * 0.4,
-                        accel_g: self.g.accel_g,
-                        profile: crate::config::MotionProfile::Trapezoid,
-                        soften: false,
-                    }).await;
-                    tokio::time::sleep(Duration::from_millis(150)).await;
-                    let _ = self.cmd_tx.send(ActuatorCommand::ServoOn(false)).await;
-                    nudge_at = Some(Instant::now() + self.next_nudge_gap());
-                }
                 _ = tick.tick() => {
                     if !btn.held {
-                        self.publish(GamePhase::Recover, 0.0, 0, score, false).await;
+                        self.publish(GamePhase::Recover, 0.0, lives, score, false).await;
                         continue;
                     }
-                    let dev = (self.position_mm().await - center).abs();
+                    let pos = self.position_mm().await;
+                    let dev = (pos - center).abs();
                     let frac = dev / self.g.stillness_tolerance_mm.max(0.1);
-                    if dev > self.g.stillness_tolerance_mm {
-                        // Moved too far — round over; report the time survived.
-                        self.publish(GamePhase::Slip, 1.0, 0, score, true).await;
-                        return Exit::Stop;
+                    let cooled_down = cooldown_until.map_or(true, |t| Instant::now() >= t);
+                    if dev > self.g.stillness_tolerance_mm && cooled_down {
+                        // Moved too far — buzz a warning, spend a life, re-anchor
+                        // so the next attempt starts from where the hand is now.
+                        lives -= 1;
+                        cooldown_until = Some(Instant::now() + debounce);
+                        center = pos;
+                        if lives == 0 {
+                            self.publish(GamePhase::Slip, 1.0, 0, score, true).await;
+                            return Exit::Stop;
+                        }
+                        self.vibrate().await;
+                        self.publish(GamePhase::Slip, frac, lives, score, true).await;
+                        continue;
                     }
-                    score += dt;
-                    self.publish(GamePhase::Hold, frac, 0, score, true).await;
+                    if dev <= self.g.stillness_tolerance_mm {
+                        score += dt;
+                    }
+                    self.publish(GamePhase::Hold, frac, lives, score, true).await;
                 }
             }
         }
     }
 
-    fn next_nudge_gap(&self) -> Duration {
-        let lo = self.g.stillness_nudge_min_ms;
-        let hi = self.g.stillness_nudge_max_ms.max(lo + 1);
-        let span = hi - lo;
-        Duration::from_millis(lo + (rand::random::<f64>() * span as f64) as u64)
+    /// Brief micro-vibration feedback: a small pulse away from center and back,
+    /// servo off again once it settles.
+    async fn vibrate(&self) {
+        let pos = self.position_mm().await;
+        let dir = if rand::random::<bool>() { 1.0 } else { -1.0 };
+        let target = (pos + dir * self.g.stillness_vibration_mm).clamp(0.0, self.stroke_mm);
+        self.servo(true).await;
+        let _ = self
+            .cmd_tx
+            .send(ActuatorCommand::MoveTo {
+                pos_mm: target,
+                vel_mm_s: self.g.max_velocity_mm_s * 0.5,
+                accel_g: self.g.accel_g,
+                profile: crate::config::MotionProfile::Trapezoid,
+                soften: false,
+            })
+            .await;
+        tokio::time::sleep(Duration::from_millis(80)).await;
+        let _ = self.cmd_tx.send(ActuatorCommand::ServoOn(false)).await;
     }
 }
 

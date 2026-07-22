@@ -81,17 +81,17 @@ export const GAME_DOCS: GameDoc[] = [
     name: 'Stillness',
     tagline: 'Control challenge',
     rules: [
-      'The servo is OFF so the rod moves freely in your hand.',
+      'The servo is OFF so the rod moves freely in your hand — nothing tugs or drives it.',
       'Hold the button to stay in the round and keep the rod still — within a tolerance of where you started.',
-      'The device gives occasional random tugs to tempt you into moving.',
-      'Drift too far and the round ends.',
+      'Drift past tolerance and you get a quick micro-vibration warning and lose a life; the round then re-centers on your current spot.',
+      'You start with 5 lives — lose them all and the round ends.',
       'Goal: stay still as long as possible.',
     ],
     operate: [
       'Start, then hold and hold the rod steady at its starting position.',
-      'Resist the random tugs. Stop to end.',
+      'Feel a buzz? You drifted — settle back down. Stop to end.',
     ],
-    meta: 'No level — score is seconds survived.',
+    meta: 'Level = lives remaining; score is seconds survived.',
   },
 ]
 

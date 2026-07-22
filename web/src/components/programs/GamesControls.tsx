@@ -23,7 +23,7 @@ const LEVEL_LABELS: Record<GameKind, string> = {
   hold_the_line: 'lines lost',
   gauntlet:      'interval',
   deadmans_climb: 'checkpoint',
-  stillness:     '—',
+  stillness:     'lives left',
 }
 
 const PHASE_STYLES: Record<GamePhase, string> = {
