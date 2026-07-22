@@ -322,6 +322,45 @@ impl GameTask {
         Duration::from_millis(((span_mm / v) * 1000.0).max(1.0) as u64) + REVERSAL_MARGIN
     }
 
+    /// Drive to `pos_mm` under motor power and wait out the estimated travel
+    /// time, or bail early on Stop / a fresh Start. Used by Stillness to
+    /// reach its round-starting position before sensing begins.
+    async fn move_to_and_settle(
+        &self,
+        pos_mm: f32,
+        vel_mm_s: f32,
+        rx: &mut mpsc::Receiver<GameControl>,
+    ) -> Option<Exit> {
+        let cur = self.position_mm().await;
+        let _ = self
+            .cmd_tx
+            .send(ActuatorCommand::MoveTo {
+                pos_mm,
+                vel_mm_s,
+                accel_g: self.g.accel_g,
+                profile: crate::config::MotionProfile::Trapezoid,
+                soften: false,
+            })
+            .await;
+        let dist_mm = (pos_mm - cur).abs();
+        let travel = Duration::from_millis(((dist_mm / vel_mm_s.max(f32::MIN_POSITIVE)) * 1000.0).max(1.0) as u64)
+            + REVERSAL_MARGIN;
+        let deadline = Instant::now() + travel;
+
+        loop {
+            tokio::select! {
+                ctrl = rx.recv() => match ctrl {
+                    None => return Some(Exit::Closed),
+                    Some(GameControl::Stop) => return Some(Exit::Stop),
+                    Some(GameControl::Start { kind }) => return Some(Exit::Restart(kind)),
+                    // Nothing else matters while settling into position.
+                    Some(_) => {}
+                },
+                _ = tokio::time::sleep_until(deadline) => return None,
+            }
+        }
+    }
+
     async fn position_mm(&self) -> f32 {
         self.state.read().await.position_mm
     }
@@ -557,13 +596,25 @@ impl GameTask {
     /// Unlike the other four games, Stillness has no deadman-hold requirement:
     /// asking the user to keep a button pressed while trying to stay still
     /// works against the point of the game, and there's no motor-driven
-    /// motion here for a deadman to guard against. Play simply runs from the
-    /// moment the ready gesture completes until Stop or the last life is
-    /// spent.
+    /// motion here for a deadman to guard against. The round instead opens
+    /// with a single motor-driven move to its starting position (see
+    /// [`GameTask::move_to_and_settle`]) so the player has a known point to
+    /// hold rather than wherever the rod happened to be left; once settled
+    /// there, play runs on its own until Stop or the last life is spent.
     async fn stillness(&self, rx: &mut mpsc::Receiver<GameControl>) -> Exit {
-        // Servo off: the rod is free in the user's hand; we only sense position.
-        // Drift past tolerance costs a life and a micro-vibration warning, not
-        // an instant loss — the rod itself never tugs or drives the user.
+        self.servo(true).await;
+        let start_pos = self.g.stillness_start_pct.clamp(0.0, 1.0) * self.stroke_mm;
+        if let Some(exit) = self
+            .move_to_and_settle(start_pos, self.g.min_velocity_mm_s, rx)
+            .await
+        {
+            return exit;
+        }
+
+        // Servo off: the rod is free in the user's hand from here; we only
+        // sense position. Drift past tolerance costs a life and a
+        // micro-vibration warning, not an instant loss — the rod itself
+        // never tugs or drives the user again once settled.
         self.servo(false).await;
         let mut tick = self.ticker();
         let dt = self.tick.as_secs_f32();
@@ -785,6 +836,95 @@ mod tests {
             beat(&ctrl, &mut cmd_rx, true).await;
         }
         assert_eq!(state.read().await.game.phase, GamePhase::Active);
+
+        ctrl.send(GameControl::Stop).await.unwrap();
+        drop(ctrl);
+        let _ = h.await;
+    }
+
+    /// Fast approach velocity (keeps the start-position move short in test
+    /// time) plus tighter lives/tolerance for deterministic drift checks.
+    fn spawn_stillness() -> (
+        Arc<RwLock<AppState>>,
+        mpsc::Sender<GameControl>,
+        mpsc::Receiver<ActuatorCommand>,
+        tokio::task::JoinHandle<()>,
+    ) {
+        let state = Arc::new(RwLock::new(AppState::new("u".into(), 1)));
+        let (cmd_tx, cmd_rx) = mpsc::channel(64);
+        let (ctrl_tx, ctrl_rx) = mpsc::channel(16);
+        let (piupiu_tx, _piupiu_rx) = mpsc::channel(16);
+        let mut c = cfg();
+        c.actuator.games.min_velocity_mm_s = 3000.0;
+        c.actuator.games.stillness_lives = 3;
+        c.actuator.games.stillness_tolerance_mm = 5.0;
+        let h = tokio::spawn(GameTask::new(state.clone(), cmd_tx, piupiu_tx, &c).run(ctrl_rx));
+        (state, ctrl_tx, cmd_rx, h)
+    }
+
+    #[tokio::test(start_paused = true)]
+    async fn stillness_moves_to_start_then_tracks_drift_without_holding() {
+        let (state, ctrl, mut cmd_rx, h) = spawn_stillness();
+        ctrl.send(GameControl::Start {
+            kind: GameKind::Stillness,
+        })
+        .await
+        .unwrap();
+        tokio::task::yield_now().await;
+        assert_eq!(state.read().await.game.phase, GamePhase::Armed);
+
+        for _ in 0..3 {
+            ctrl.send(GameControl::HardwareTap).await.unwrap();
+            tokio::task::yield_now().await;
+        }
+
+        // The ready-delay settle, the servo-on settle, and the approach move
+        // to the start position are three separately-scheduled sleeps in
+        // sequence — each only registers its timer once the previous one
+        // fires — so step time forward in small increments rather than one
+        // big jump (see the win-celebration test above for the same issue).
+        for _ in 0..10 {
+            tokio::time::advance(Duration::from_millis(20)).await;
+            tokio::task::yield_now().await;
+        }
+
+        // The round opened with a single motor-driven move to 60% of the
+        // 300mm stroke — the player never had to touch a button for this.
+        let mut moved_to = None;
+        while let Ok(cmd) = cmd_rx.try_recv() {
+            if let ActuatorCommand::MoveTo { pos_mm, .. } = cmd {
+                moved_to = Some(pos_mm);
+            }
+        }
+        assert_eq!(moved_to, Some(180.0), "60% of the 300mm stroke");
+
+        let g = state.read().await.game.clone();
+        assert_eq!(g.phase, GamePhase::Hold);
+        assert_eq!(g.level, 3, "full lives, nothing lost while still");
+        assert!(g.holding, "stillness always reports holding — no hold gesture exists");
+
+        // Hold still for a few ticks: duration accrues, still no button held.
+        for _ in 0..3 {
+            beat(&ctrl, &mut cmd_rx, false).await;
+        }
+        let g = state.read().await.game.clone();
+        assert!(g.duration_s > 0.2, "should accrue duration without holding: {}", g.duration_s);
+        assert_eq!(g.level, 3);
+
+        // Drift past tolerance without ever touching a button — Stillness
+        // has no deadman, so this alone must cost a life. The life-loss tick
+        // chains its own vibration sleep before publishing, and the round
+        // re-anchors on the drifted spot afterward (so `phase` flips back to
+        // `Hold` on the very next regular tick) — `level` is the durable
+        // signal to assert on here, not the transient `Slip` phase.
+        state.write().await.position_mm = 180.0 + 10.0; // tolerance is 5mm
+        for _ in 0..15 {
+            tokio::time::advance(Duration::from_millis(20)).await;
+            tokio::task::yield_now().await;
+        }
+        while cmd_rx.try_recv().is_ok() {}
+        let g = state.read().await.game.clone();
+        assert_eq!(g.level, 2, "one life lost from drift alone, no button involved");
 
         ctrl.send(GameControl::Stop).await.unwrap();
         drop(ctrl);

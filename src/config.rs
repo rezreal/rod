@@ -578,6 +578,10 @@ pub struct Games {
     pub climb_total_s: f32,
 
     // ── Stillness ──
+    /// Starting position (fraction 0..1 of the comfortable-depth-scaled
+    /// range) the rod moves to under motor power before a round begins.
+    #[serde(default = "default_game_still_start_pct")]
+    pub stillness_start_pct: f32,
     /// Allowed deviation from the round's center before it counts as a move
     /// (mm). Smaller = more sensitive to drift.
     #[serde(default = "default_game_still_tol_mm")]
@@ -614,6 +618,7 @@ impl Default for Games {
             gauntlet_rest_s: default_game_rest_s(),
             climb_checkpoints: default_game_checkpoints(),
             climb_total_s: default_game_climb_total_s(),
+            stillness_start_pct: default_game_still_start_pct(),
             stillness_tolerance_mm: default_game_still_tol_mm(),
             stillness_lives: default_game_still_lives(),
             stillness_vibration_mm: default_game_still_vibration_mm(),
@@ -1201,6 +1206,9 @@ fn default_game_checkpoints() -> u32 {
 }
 fn default_game_climb_total_s() -> f32 {
     90.0
+}
+fn default_game_still_start_pct() -> f32 {
+    0.6
 }
 fn default_game_still_tol_mm() -> f32 {
     6.0
