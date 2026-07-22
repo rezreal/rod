@@ -213,7 +213,8 @@ pub struct GameRuntime {
     pub level: u32,
     /// Primary endurance metric: seconds survived / held this session.
     pub score_s: f32,
-    /// Whether the deadman button is currently held.
+    /// Whether the deadman button is currently held. Stillness has no hold
+    /// requirement, so this is always `true` once it's playing.
     pub holding: bool,
 }
 

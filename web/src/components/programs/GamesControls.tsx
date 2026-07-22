@@ -31,6 +31,20 @@ const LEVEL_LABELS: Record<GameKind, string> = {
   stillness:     'lives left',
 }
 
+/** Per-game label for the `intensity` meter — what a rising value means. */
+const METER_LABELS: Record<GameKind, string> = {
+  edge_recover:  'Intensity',
+  hold_the_line: 'Intensity',
+  gauntlet:      'Intensity',
+  deadmans_climb: 'Intensity',
+  // For Stillness the meter tracks drift toward the tolerance limit, not
+  // building intensity — a rising value is bad, the opposite of the others.
+  stillness:     'Drift',
+}
+
+/** Games with no deadman-hold requirement — they play on their own once armed. */
+const NO_HOLD_GAMES: readonly GameKind[] = ['stillness']
+
 const PHASE_STYLES: Record<GamePhase, string> = {
   idle:    'bg-slate-700 text-slate-400',
   armed:   'bg-amber-500/20 text-amber-300 border border-amber-500/30',
@@ -125,6 +139,8 @@ export function GamesControls() {
   const holding = game?.holding ?? false
   const activeKind = game?.kind ?? selected
   const levelLabel = LEVEL_LABELS[activeKind]
+  const meterLabel = METER_LABELS[activeKind]
+  const noHold = NO_HOLD_GAMES.includes(activeKind)
 
   return (
     <div className="flex flex-col gap-6 p-4">
@@ -133,7 +149,7 @@ export function GamesControls() {
       <div className="flex items-center gap-2">
         <span
           className={`inline-block w-2 h-2 rounded-full ${
-            holding  ? 'bg-fuchsia-400 animate-pulse' :
+            holding || (isActive && noHold) ? 'bg-fuchsia-400 animate-pulse' :
             isActive ? 'bg-amber-400' :
                        'bg-slate-600'
           }`}
@@ -142,7 +158,7 @@ export function GamesControls() {
           {isArmed
             ? `Tap the device button ${READY_TAPS}× to start`
             : isActive
-              ? holding ? `Playing ${GAME_NAMES[activeKind]}` : 'Game ready — hold to play'
+              ? holding || noHold ? `Playing ${GAME_NAMES[activeKind]}` : 'Game ready — hold to play'
               : 'No game running'}
         </span>
       </div>
@@ -250,8 +266,9 @@ export function GamesControls() {
         </div>
       )}
 
-      {/* Deadman hold button — only once the game is actually playing */}
-      {isActive && !isArmed && (
+      {/* Deadman hold button — only for games that require holding, and only
+          once the game is actually playing. Stillness has no hold requirement. */}
+      {isActive && !isArmed && !noHold && (
         <div className="flex flex-col gap-3">
           <p className="text-xs text-slate-500 text-center">
             Hold to play · release to stop motion
@@ -293,16 +310,18 @@ export function GamesControls() {
             <span className={`inline-flex items-center px-2.5 py-1 rounded-full text-xs font-semibold tracking-wider ${PHASE_STYLES[phase]}`}>
               {PHASE_LABELS[phase]}
             </span>
-            <span className="flex items-center gap-1.5 text-xs text-slate-400">
-              <span className={`inline-block w-1.5 h-1.5 rounded-full ${holding ? 'bg-fuchsia-400' : 'bg-slate-600'}`} />
-              {holding ? 'Holding' : 'Released'}
-            </span>
+            {!noHold && (
+              <span className="flex items-center gap-1.5 text-xs text-slate-400">
+                <span className={`inline-block w-1.5 h-1.5 rounded-full ${holding ? 'bg-fuchsia-400' : 'bg-slate-600'}`} />
+                {holding ? 'Holding' : 'Released'}
+              </span>
+            )}
           </div>
 
-          {/* Intensity meter */}
+          {/* Intensity / drift meter */}
           <div className="flex flex-col gap-1.5">
             <div className="flex items-center justify-between">
-              <span className="text-xs text-slate-400">Intensity</span>
+              <span className="text-xs text-slate-400">{meterLabel}</span>
               <span className="text-xs font-mono font-semibold text-fuchsia-300">
                 {Math.round(intensity * 100)}%
               </span>

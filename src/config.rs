@@ -594,7 +594,8 @@ pub struct Games {
     pub climb_total_s: f32,
 
     // ── Stillness ──
-    /// Allowed deviation from the round's center before it counts as a move (mm).
+    /// Allowed deviation from the round's center before it counts as a move
+    /// (mm). Smaller = more sensitive to drift.
     #[serde(default = "default_game_still_tol_mm")]
     pub stillness_tolerance_mm: f32,
     /// Lives to start a round with; a round ends when the last one is spent.
@@ -1238,7 +1239,7 @@ fn default_game_climb_total_s() -> f32 {
     90.0
 }
 fn default_game_still_tol_mm() -> f32 {
-    12.0
+    6.0
 }
 fn default_game_still_lives() -> u32 {
     5
