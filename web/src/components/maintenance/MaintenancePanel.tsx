@@ -14,7 +14,7 @@ interface Props {
 export function MaintenancePanel({ onClose }: Props) {
   const connectionState = useDeviceStore((s) => s.connectionState)
   const deviceInfo      = useDeviceStore((s) => s.deviceInfo)
-  const { mode, alarmCode } = useStatus()
+  const { mode, alarmCode, coyoteAutoconnect, piupiuAutoconnect } = useStatus()
   const send = useSendCommand()
   const [showDiag, setShowDiag] = useState(false)
   const audioFeedbackEnabled    = usePreferencesStore((s) => s.audioFeedbackEnabled)
@@ -109,6 +109,26 @@ export function MaintenancePanel({ onClose }: Props) {
             <MaxDepthControl />
           </div>
 
+          {/* Autoconnect */}
+          <div className="flex flex-col gap-3 p-4 bg-slate-800/50 rounded-xl border border-slate-700">
+            <div>
+              <h3 className="text-sm font-semibold text-slate-200">Autoconnect</h3>
+              <p className="text-xs text-slate-500 mt-1">
+                Automatically connect these BLE toys whenever they're in range.
+              </p>
+            </div>
+            <ToggleSwitch
+              label="Coyote (e-stim)"
+              checked={coyoteAutoconnect}
+              onChange={(enabled) => send({ type: 'set_coyote_autoconnect', enabled })}
+            />
+            <ToggleSwitch
+              label="PiuPiu (lube launcher)"
+              checked={piupiuAutoconnect}
+              onChange={(enabled) => send({ type: 'set_piupiu_autoconnect', enabled })}
+            />
+          </div>
+
           {/* Handy compatibility */}
           <div className="flex items-center gap-3 p-4 bg-slate-800/30 rounded-xl border border-slate-700">
             <div className="w-8 h-8 rounded-lg bg-slate-700 flex items-center justify-center shrink-0">
@@ -168,5 +188,33 @@ export function MaintenancePanel({ onClose }: Props) {
         </div>
       </div>
     </div>
+  )
+}
+
+interface ToggleSwitchProps {
+  label: string
+  checked: boolean
+  onChange: (checked: boolean) => void
+}
+
+function ToggleSwitch({ label, checked, onChange }: ToggleSwitchProps) {
+  return (
+    <button
+      role="switch"
+      aria-checked={checked}
+      onClick={() => onChange(!checked)}
+      className="flex items-center justify-between gap-3"
+    >
+      <span className="text-sm text-slate-300">{label}</span>
+      <span
+        className={`relative w-10 h-6 rounded-full transition-colors shrink-0
+          ${checked ? 'bg-cyan-600' : 'bg-slate-700'}`}
+      >
+        <span
+          className={`absolute top-0.5 left-0.5 w-5 h-5 bg-white rounded-full transition-transform
+            ${checked ? 'translate-x-4' : 'translate-x-0'}`}
+        />
+      </span>
+    </button>
   )
 }

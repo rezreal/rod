@@ -72,6 +72,14 @@ pub struct CoyoteState {
     pub following: bool,
 }
 
+/// Hismith PiuPiu lube launcher state (BLE central; see `src/devices/piupiu.rs`).
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Default)]
+pub struct PiuPiuState {
+    pub connected: bool,
+    /// Squirt trigger currently held (repeating the command every 100 ms).
+    pub active: bool,
+}
+
 /// Readings from connected biosensors (BLE central; see `src/sensors/`).
 #[derive(Debug, Clone, Copy, PartialEq, Default)]
 pub struct SensorState {
@@ -553,6 +561,15 @@ pub struct AppState {
     pub tempo: TempoRuntime,
     pub sensors: SensorState,
     pub coyote: CoyoteState,
+    pub piupiu: PiuPiuState,
+
+    /// Persisted "autoconnect at boot" setting for the Coyote/PiuPiu BLE
+    /// devices (see `devices::load_autoconnect`/`persist_autoconnect`). Lives
+    /// here — not in `CoyoteState`/`PiuPiuState` — because those get reset to
+    /// `Default` on every disconnect, while this is a standing user
+    /// preference independent of the current connection.
+    pub coyote_autoconnect: bool,
+    pub piupiu_autoconnect: bool,
 
     /// Server↔device clock offset in ms (for HSP `server_time` sync).
     pub clock_offset_ms: i64,
@@ -615,6 +632,9 @@ impl AppState {
             tempo: TempoRuntime::default(),
             sensors: SensorState::default(),
             coyote: CoyoteState::default(),
+            piupiu: PiuPiuState::default(),
+            coyote_autoconnect: false,
+            piupiu_autoconnect: false,
             clock_offset_ms: 0,
             mode_session_id: 0,
             boot_session_id,

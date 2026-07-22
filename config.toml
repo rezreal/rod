@@ -221,7 +221,10 @@ name   = ""                # optional name substring filter; empty = any HR sens
 # DG-LAB Coyote 3.0 e-stim box, driven over BLE (central role) — SPIKE, not yet
 # hardware-validated. SAFETY: max_strength caps output far below the device max
 # (200); strength is ramped, zeroed on stop/disconnect, and the device stops if
-# the waveform stream stops. Start LOW. Off by default.
+# the waveform stream stops. Start LOW.
+# `enable` is only the *first-boot default* for autoconnect; once the app
+# toggles autoconnect via Settings, the persisted value (sidecar file next to
+# the binary) wins on every later boot.
 enable             = false
 name               = ""    # name substring; empty = default Coyote 3.0 name
 max_strength       = 20    # hard per-channel cap (0..200) — keep conservative
@@ -229,3 +232,11 @@ waveform_freq      = 100   # default waveform frequency (user units 10..1000)
 waveform_intensity = 30    # default waveform intensity (0..100)
 follow_scale       = 1.0   # in "follow program" mode, fraction of the cap full
                            # rod motion reaches (e-stim tracks how hard it moves)
+
+[devices.piupiu]
+# Hismith PiuPiu lube launcher, driven over BLE (central role) — SPIKE, not yet
+# hardware-validated. Single momentary "squirt" command; holding the button in
+# the UI repeats it every 100 ms. `enable` is only the first-boot autoconnect
+# default (see note above under [devices.coyote]).
+enable = false
+name   = ""    # name substring; empty = default "Piupiu" name

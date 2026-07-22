@@ -23,9 +23,16 @@ use tokio::sync::{mpsc, RwLock};
 use crate::config::Coyote;
 use crate::state::AppState;
 
-/// Control messages to the Coyote driver.
+/// Control messages to the Coyote driver. The task is always running but idle
+/// until [`Connect`](CoyoteControl::Connect); the UI (or configured
+/// autoconnect) triggers pairing on demand, mirroring
+/// [`SensorControl`](crate::sensors::SensorControl).
 #[derive(Debug, Clone, PartialEq)]
 pub enum CoyoteControl {
+    /// Start scanning for and maintaining a Coyote connection.
+    Connect,
+    /// Drop any current connection/scan and go idle.
+    Disconnect,
     /// Set per-channel target strength (clamped to `max_strength`, then ramped).
     /// Switches off follow mode (manual takes over).
     SetStrength { a: u8, b: u8 },
@@ -135,11 +142,13 @@ pub use imp::run;
 #[cfg(not(target_os = "linux"))]
 pub async fn run(
     _state: Arc<RwLock<AppState>>,
-    _ctrl_rx: mpsc::Receiver<CoyoteControl>,
+    mut ctrl_rx: mpsc::Receiver<CoyoteControl>,
     _cfg: Coyote,
     _adapter: String,
 ) {
     tracing::warn!("Coyote driver requires Linux/BlueZ — skipping on this platform.");
+    // Drain control messages so senders never block on this platform.
+    while ctrl_rx.recv().await.is_some() {}
 }
 
 #[cfg(target_os = "linux")]
@@ -167,33 +176,63 @@ mod imp {
     /// Max strength change per frame (ramp), so output never jumps.
     const RAMP_STEP: u8 = 1;
 
+    /// Control-driven supervisor. Idle until a [`CoyoteControl::Connect`]
+    /// arrives, then keep a Coyote connected (retrying on any error/drop) until
+    /// [`CoyoteControl::Disconnect`]. Mirrors `sensors::run`'s shape.
     pub async fn run(
         state: Arc<RwLock<AppState>>,
         mut ctrl_rx: mpsc::Receiver<CoyoteControl>,
         cfg: Coyote,
         adapter: String,
     ) {
-        info!("coyote driver running");
+        info!("coyote driver running (idle)");
         loop {
-            if let Err(e) = session(&state, &mut ctrl_rx, &cfg, &adapter).await {
-                warn!(error = %e, "coyote session ended; retrying in 5s");
+            // ── Idle: wait for a Connect. ──
+            match ctrl_rx.recv().await {
+                None => return, // channel closed → shutting down
+                Some(CoyoteControl::Connect) => {}
+                Some(_) => continue, // already idle: nothing to disconnect/set
             }
-            {
-                let mut st = state.write().await;
-                st.coyote.connected = false;
-                st.coyote.strength_a = 0;
-                st.coyote.strength_b = 0;
+            info!("coyote: connect requested; scanning");
+
+            // ── Active: maintain the connection, retrying, until disconnected. ──
+            loop {
+                let disconnect_requested = match session(&state, &mut ctrl_rx, &cfg, &adapter).await
+                {
+                    Ok(disconnect_requested) => disconnect_requested,
+                    Err(e) => {
+                        warn!(error = %e, "coyote session ended; retrying in 5s");
+                        false
+                    }
+                };
+                {
+                    let mut st = state.write().await;
+                    st.coyote.connected = false;
+                    st.coyote.strength_a = 0;
+                    st.coyote.strength_b = 0;
+                }
+                if disconnect_requested {
+                    break;
+                }
+                sleep(Duration::from_secs(5)).await;
             }
-            sleep(Duration::from_secs(5)).await;
+
+            // ── Back to idle: clear all coyote state. ──
+            state.write().await.coyote = Default::default();
+            info!("coyote: disconnected (idle)");
         }
     }
 
+    /// Runs one connection attempt. Returns `Ok(true)` if it ended because a
+    /// [`CoyoteControl::Disconnect`] arrived (caller should go idle, no
+    /// retry), `Ok(false)`/`Err` if it ended for any other reason (caller
+    /// retries after a backoff).
     async fn session(
         state: &Arc<RwLock<AppState>>,
         ctrl_rx: &mut mpsc::Receiver<CoyoteControl>,
         cfg: &Coyote,
         adapter_name: &str,
-    ) -> bluer::Result<()> {
+    ) -> bluer::Result<bool> {
         let cap = cfg.max_strength.min(DEVICE_MAX_STRENGTH);
         let session = Session::new().await?;
         let adapter = match session.adapter(adapter_name) {
@@ -239,7 +278,14 @@ mod imp {
         loop {
             tokio::select! {
                 ctrl = ctrl_rx.recv() => match ctrl {
-                    None => return Ok(()),
+                    None => return Ok(false),
+                    Some(CoyoteControl::Connect) => {} // already connected; no-op
+                    Some(CoyoteControl::Disconnect) => {
+                        // Immediate zero (fail-safe), then end the session.
+                        let zero = steady_frame(0, cfg.waveform_freq, cfg.waveform_intensity);
+                        let _ = write.write(&encode_b0(seq, &zero, &zero)).await;
+                        return Ok(true);
+                    }
                     Some(CoyoteControl::SetStrength { a, b }) => {
                         following = false;
                         target_a = a.min(cap);
@@ -282,7 +328,7 @@ mod imp {
                     seq = seq.wrapping_add(1) & 0x0F;
                     if let Err(e) = write.write(&frame).await {
                         warn!(error = %e, "coyote frame write failed");
-                        return Ok(()); // drop session → reconnect (fail-safe stops output)
+                        return Ok(false); // drop session → reconnect (fail-safe stops output)
                     }
                 }
             }
