@@ -4,8 +4,6 @@ rod runs on a Raspberry Pi (3, 4, or 5) and bridges your IAI
 actuator to the web app over Bluetooth. There are two ways to install it — pick
 the one that matches you.
 
-> Replace `OWNER/rod` below with this project's GitHub repo.
-
 ---
 
 ## Option A — Flash a ready-made image (easiest, no terminal)
@@ -14,7 +12,7 @@ Best if you're starting with a blank SD card. You don't touch a command line at
 all.
 
 1. **Download the image** for your Pi from the project's
-   [Releases](https://github.com/OWNER/rod/releases) page:
+   [Releases](https://github.com/rezreal/rod/releases) page:
    - Pi 5 → `rod-rpi5_64.img.gz`
    - Pi 4 / 400 / CM4 → `rod-rpi4_64.img.gz`
    - Pi 3 → `rod-rpi3_64.img.gz`
@@ -39,7 +37,7 @@ That's it. It starts automatically on every boot.
 Best if your Pi is already set up. Open a terminal on the Pi (or SSH in) and run:
 
 ```bash
-curl -sSL https://raw.githubusercontent.com/OWNER/rod/main/scripts/install.sh | sudo bash
+curl -sSL https://raw.githubusercontent.com/rezreal/rod/main/scripts/install.sh | sudo bash
 ```
 
 It will:
@@ -54,7 +52,7 @@ leaves your config alone.
 
 **Uninstall:**
 ```bash
-curl -sSL https://raw.githubusercontent.com/OWNER/rod/main/scripts/uninstall.sh | sudo bash
+curl -sSL https://raw.githubusercontent.com/rezreal/rod/main/scripts/uninstall.sh | sudo bash
 # add --purge to also delete /etc/rod
 ```
 

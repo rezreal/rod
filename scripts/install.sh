@@ -2,7 +2,7 @@
 #
 # rod one-line installer for Raspberry Pi OS (64-bit).
 #
-#   curl -sSL https://raw.githubusercontent.com/OWNER/rod/main/scripts/install.sh | sudo bash
+#   curl -sSL https://raw.githubusercontent.com/rezreal/rod/main/scripts/install.sh | sudo bash
 #
 # Downloads the latest release binary, installs it as a systemd service that
 # starts on boot, and drops a default config. Safe to re-run to update the
@@ -10,7 +10,7 @@
 # GitHub repo it pulls from.
 set -euo pipefail
 
-REPO="${ROD_REPO:-OWNER/rod}"          # ← your GitHub org/repo
+REPO="${ROD_REPO:-rezreal/rod}"
 BIN_DIR=/usr/local/bin
 BIN="$BIN_DIR/rod"
 CFG_DIR=/etc/rod
@@ -24,7 +24,6 @@ ok()   { printf '\033[32m✓ %s\033[0m\n' "$*"; }
 die()  { printf '\033[31m✗ %s\033[0m\n' "$*" >&2; exit 1; }
 
 [ "$(id -u)" -eq 0 ] || die "Please run with sudo:  curl -sSL …/install.sh | sudo bash"
-[ "$REPO" != "OWNER/rod" ] || die "Set ROD_REPO=your-org/your-repo (or edit REPO in this script)."
 
 # ── 1. Pick the right binary for this Pi ──────────────────────────────────────
 case "$(uname -m)" in

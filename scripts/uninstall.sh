@@ -1,7 +1,7 @@
 #!/usr/bin/env bash
 #
 # Remove a rod install done by scripts/install.sh.
-#   curl -sSL https://raw.githubusercontent.com/OWNER/rod/main/scripts/uninstall.sh | sudo bash
+#   curl -sSL https://raw.githubusercontent.com/rezreal/rod/main/scripts/uninstall.sh | sudo bash
 # Pass --purge to also delete the config in /etc/rod.
 set -euo pipefail
 

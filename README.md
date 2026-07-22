@@ -21,7 +21,7 @@ Imager steps and troubleshooting is in **[INSTALL.md](INSTALL.md)**.
 
 **1. Flash a ready-made image — easiest, no terminal.**
 Download the image for your board from the
-[Releases](https://github.com/OWNER/rod/releases) page
+[Releases](https://github.com/rezreal/rod/releases) page
 (`rod-rpi{3,4,5}_64.img.gz`), open it in
 [Raspberry Pi Imager](https://www.raspberrypi.com/software/) via
 *Choose OS → Use custom*, set Wi-Fi + hostname in Imager's settings (⚙), and
@@ -31,7 +31,7 @@ over Bluetooth — it appears as `Rod-…`. The service starts on every boot.
 **2. One-line installer — for an existing Raspberry Pi OS (64-bit).**
 
 ```sh
-curl -sSL https://raw.githubusercontent.com/OWNER/rod/main/scripts/install.sh | sudo bash
+curl -sSL https://raw.githubusercontent.com/rezreal/rod/main/scripts/install.sh | sudo bash
 ```
 
 Downloads and checksum-verifies the latest release binary, installs it as a
@@ -45,10 +45,6 @@ config).
 sudo systemctl status rod     # running?
 journalctl -u rod -f          # live logs
 ```
-
-> Both methods read the GitHub repo from `OWNER/rod` — replace that with this
-> project's actual `owner/repo` in the commands, [`scripts/install.sh`](scripts/install.sh),
-> and [`scripts/uninstall.sh`](scripts/uninstall.sh).
 
 There is no auto-updater — updating is re-running the installer (or re-flashing
 the image).
