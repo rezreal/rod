@@ -70,7 +70,7 @@ mod imp {
 
     /// 16-bit assigned number → full 128-bit Bluetooth base UUID.
     const fn bt_uuid(short: u16) -> Uuid {
-        Uuid::from_u128(0x0000_0000_0000_1000_8000_00805f9b34fb | ((short as u128) << 96))
+        Uuid::from_u128(0x0000_0000_0000_1000_8000_0080_5f9b_34fb | ((short as u128) << 96))
     }
     const HR_SERVICE: Uuid = bt_uuid(0x180D);
     const HR_MEASUREMENT: Uuid = bt_uuid(0x2A37);

@@ -154,7 +154,7 @@ mod imp {
     use super::*;
 
     const fn bt(short: u16) -> Uuid {
-        Uuid::from_u128(0x0000_0000_0000_1000_8000_00805f9b34fb | ((short as u128) << 96))
+        Uuid::from_u128(0x0000_0000_0000_1000_8000_0080_5f9b_34fb | ((short as u128) << 96))
     }
     const SVC_CMD: Uuid = bt(0x180C);
     const CH_WRITE: Uuid = bt(0x150A);

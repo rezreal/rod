@@ -395,7 +395,7 @@ mod imp {
                     .send(BridgeCommand::ResetAlarm { reply })
                     .await
                     .map_err(|e| e.to_string())?;
-                rx.await.map_err(|e| e.to_string())?.map_err(|e| e)?;
+                rx.await.map_err(|e| e.to_string())??;
             }
             Command::Calibrate => {
                 // Use the spring-back peck-probe: it releases the servo at each
@@ -408,7 +408,7 @@ mod imp {
                     .send(BridgeCommand::PeckProbe { reply })
                     .await
                     .map_err(|e| e.to_string())?;
-                rx.await.map_err(|e| e.to_string())?.map_err(|e| e)?;
+                rx.await.map_err(|e| e.to_string())??;
             }
             Command::DrillStart { feed_rate_mm_s } => {
                 modes
