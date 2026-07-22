@@ -511,6 +511,32 @@ mod imp {
                     .await
                     .map_err(|e| e.to_string())?;
             }
+            Command::CycleConfig {
+                pattern,
+                speed,
+                intensity,
+                reps,
+                pause_s,
+            } => {
+                // No Handy RPC equivalent for Cycle at all — write straight
+                // into AppState; the running task re-reads it every tick.
+                let idx = (pattern as usize)
+                    .min(crate::modes::cycle::PATTERN_COUNT as usize - 1);
+                let mut st = state.write().await;
+                let p = &mut st.cycle.params[idx];
+                if let Some(v) = speed {
+                    p.speed = v.clamp(0.25, 3.0);
+                }
+                if let Some(v) = intensity {
+                    p.intensity = v.clamp(0.0, 1.5);
+                }
+                if let Some(v) = reps {
+                    p.reps = v.clamp(1, 8);
+                }
+                if let Some(v) = pause_s {
+                    p.pause_s = v.clamp(0.0, 10.0);
+                }
+            }
             Command::LearnStart => {
                 modes
                     .learn

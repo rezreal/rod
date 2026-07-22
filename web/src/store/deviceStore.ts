@@ -9,7 +9,20 @@
  * re-render when a status bit flips, and vice-versa.
  */
 import { create } from 'zustand'
-import type { ConnectionState, CoyoteState, CycleState, DeviceInfo, DrillState, EchoState, GameState, HampState, HdspState, HeartRateState, HspState, ImpaleState, LearnState, PiuPiuState, PlumbState, ProgramMode, PulseState, RampState, SurgeState, TempoState, TideState, TraceState, Telemetry } from '../types/sscp'
+import type { ConnectionState, CoyoteState, CyclePatternParams, CycleState, DeviceInfo, DrillState, EchoState, GameState, HampState, HdspState, HeartRateState, HspState, ImpaleState, LearnState, PiuPiuState, PlumbState, ProgramMode, PulseState, RampState, SurgeState, TempoState, TideState, TraceState, Telemetry } from '../types/sscp'
+
+/** Field-by-field comparison — `params` is a fresh array every telemetry
+ *  tick, so reference equality never holds even when nothing changed. */
+function cyclePatternsChanged(a: CyclePatternParams[] | undefined, b: CyclePatternParams[] | undefined): boolean {
+  if (a === b) return false
+  if (!a || !b || a.length !== b.length) return true
+  return a.some((p, i) =>
+    p.speed !== b[i].speed ||
+    p.intensity !== b[i].intensity ||
+    p.reps !== b[i].reps ||
+    p.pauseS !== b[i].pauseS,
+  )
+}
 
 // ── Position slice ────────────────────────────────────────────────────────────
 
@@ -221,6 +234,7 @@ export const useDeviceStore = create<DeviceStore>((set) => ({
         t.cycle?.patternName  !== prev_s.cycle?.patternName  ||
         t.cycle?.patternCount !== prev_s.cycle?.patternCount ||
         t.cycle?.paused       !== prev_s.cycle?.paused       ||
+        cyclePatternsChanged(t.cycle?.params, prev_s.cycle?.params) ||
         // Learn state
         t.learn?.phase     !== prev_s.learn?.phase     ||
         t.learn?.points    !== prev_s.learn?.points    ||

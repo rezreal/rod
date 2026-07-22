@@ -120,6 +120,18 @@ export interface ImpaleState {
   won: boolean
 }
 
+/** Per-pattern user-adjustable playback parameters (see `cycle_config`). */
+export interface CyclePatternParams {
+  /** Playback rate multiplier, 0.25–3.0. Default 1. */
+  speed: number
+  /** Amplitude multiplier around the stroke's centre — "gentle ↔ hard", 0–1.5. Default 1. */
+  intensity: number
+  /** Strokes per loop before a pause, 1–8. Default 1. */
+  reps: number
+  /** Rest duration (seconds) after `reps` complete, 0–10. Default 0. */
+  pauseS: number
+}
+
 export interface CycleState {
   /** Current pattern index (0-based). */
   pattern: number
@@ -128,6 +140,8 @@ export interface CycleState {
   /** Total number of patterns. */
   patternCount: number
   paused: boolean
+  /** Playback parameters for every pattern, indexed by pattern. */
+  params: CyclePatternParams[]
 }
 
 export interface PlumbState {
@@ -309,6 +323,17 @@ export interface CycleStartCommand  { type: 'cycle_start' }
 export interface CycleButtonCommand { type: 'cycle_button'; down: boolean }
 /** Exit cycle mode — stop motion, release servo. */
 export interface CycleStopCommand   { type: 'cycle_stop' }
+/** Update per-pattern playback parameters (partial update; unset fields keep
+ *  their current value). Applies live, whether or not `pattern` is the one
+ *  currently playing. */
+export interface CycleConfigCommand {
+  type: 'cycle_config'
+  pattern: number
+  speed?: number
+  intensity?: number
+  reps?: number
+  pauseS?: number
+}
 
 /** Enter learn (teach-and-repeat) mode. */
 export interface LearnStartCommand  { type: 'learn_start' }
@@ -432,6 +457,7 @@ export type Command =
   | CycleStartCommand
   | CycleButtonCommand
   | CycleStopCommand
+  | CycleConfigCommand
   | LearnStartCommand
   | LearnButtonCommand
   | LearnStopCommand
