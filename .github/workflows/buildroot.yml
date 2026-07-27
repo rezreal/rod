@@ -32,8 +32,6 @@ jobs:
       fail-fast: false
       matrix:
         board: [rpi3_64, rpi4_64, rpi5_64]
-    env:
-      BR: ${{ runner.temp }}/br
 
     steps:
       - uses: actions/checkout@v4
@@ -61,25 +59,27 @@ jobs:
       - name: Cache Buildroot downloads
         uses: actions/cache@v4
         with:
-          path: ${{ env.BR }}/dl
+          path: ${{ runner.temp }}/br/dl
           key: buildroot-dl-${{ hashFiles('buildroot-external/configs/**', 'buildroot-external/package/**') }}
           restore-keys: buildroot-dl-
 
       - name: Cache ccache (${{ matrix.board }})
         uses: actions/cache@v4
         with:
-          path: ${{ env.BR }}/ccache/${{ matrix.board }}
+          path: ${{ runner.temp }}/br/ccache/${{ matrix.board }}
           key: buildroot-ccache-${{ matrix.board }}-${{ github.sha }}
           restore-keys: buildroot-ccache-${{ matrix.board }}-
 
       - name: Download Buildroot 2024.02 LTS
         run: |
+          BR="$RUNNER_TEMP/br"
           mkdir -p "$BR/root"
           curl -L https://buildroot.org/downloads/buildroot-2024.02.tar.gz \
             | tar xz --strip-components=1 -C "$BR/root"
 
       - name: Configure (${{ matrix.board }})
         run: |
+          BR="$RUNNER_TEMP/br"
           mkdir -p "$BR/output/${{ matrix.board }}"
           make -C "$BR/root" \
             O="$BR/output/${{ matrix.board }}" \
@@ -89,7 +89,7 @@ jobs:
             rod_${{ matrix.board }}_defconfig
 
       - name: Build (${{ matrix.board }})
-        run: make -C "$BR/output/${{ matrix.board }}"
+        run: make -C "$RUNNER_TEMP/br/output/${{ matrix.board }}"
         timeout-minutes: 240
 
       - name: Disk space after build
@@ -98,6 +98,7 @@ jobs:
 
       - name: Compress image
         run: |
+          BR="$RUNNER_TEMP/br"
           gzip -k "$BR/output/${{ matrix.board }}/images/sdcard.img"
           mv "$BR/output/${{ matrix.board }}/images/sdcard.img.gz" \
              rod-${{ matrix.board }}-${{ github.ref_name }}.img.gz
