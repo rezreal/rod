@@ -60,7 +60,7 @@ jobs:
         uses: actions/cache@v4
         with:
           path: ${{ runner.temp }}/br/dl
-          key: buildroot-dl-${{ hashFiles('buildroot-external/configs/**', 'buildroot-external/package/**') }}
+          key: buildroot-dl-${{ hashFiles('buildroot-external/configs/**', 'buildroot-external/package/**', 'Cargo.lock') }}
           restore-keys: buildroot-dl-
 
       - name: Cache ccache (${{ matrix.board }})
