@@ -7,9 +7,16 @@ name: buildroot-images
 # Uses ubuntu-latest (x86_64) — Buildroot's internal cross-toolchain runs on
 # x86_64 hosts and cross-compiles for aarch64.
 #
+# Buildroot's own checkout/output/dl/ccache dirs all live under $BR
+# (runner.temp), deliberately OUTSIDE the git checkout: the `rod` package
+# is BR2_PACKAGE_ROD's local-source sync of the whole repo root, and a
+# prior version of this workflow put `buildroot/` inside that checkout —
+# so rsync kept copying the (self-growing) output directory into itself,
+# filling the disk before any real error appeared.
+#
 # Cache strategy:
-#   buildroot-dl/  — downloaded source tarballs (~500 MB, rarely changes)
-#   buildroot-ccache/<board>/ — compiler cache (~200 MB, speeds up rebuilds)
+#   $BR/dl/     — downloaded source tarballs (~500 MB, rarely changes)
+#   $BR/ccache/<board>/ — compiler cache (~200 MB, speeds up rebuilds)
 # Cold build (empty caches): ~2h+ per board on a standard runner, hence the
 # 240-minute Build timeout below. Warm build (dl + ccache hit): ~20-30 min.
 
@@ -25,6 +32,8 @@ jobs:
       fail-fast: false
       matrix:
         board: [rpi3_64, rpi4_64, rpi5_64]
+    env:
+      BR: ${{ runner.temp }}/br
 
     steps:
       - uses: actions/checkout@v4
@@ -32,8 +41,7 @@ jobs:
       # A full downstream RPi kernel + systemd + toolchain build eats well
       # over the ~14 GB free by default on a standard runner (which ships
       # ~30 GB of preinstalled Android/.NET/GHC/CodeQL toolchains nothing
-      # here uses) — a prior run died mid-build with "No space left on
-      # device". Reclaiming that upfront comfortably covers it.
+      # here uses).
       - name: Free disk space
         run: |
           sudo rm -rf /usr/share/dotnet /usr/local/lib/android /opt/ghc \
@@ -53,35 +61,35 @@ jobs:
       - name: Cache Buildroot downloads
         uses: actions/cache@v4
         with:
-          path: buildroot-dl
+          path: ${{ env.BR }}/dl
           key: buildroot-dl-${{ hashFiles('buildroot-external/configs/**', 'buildroot-external/package/**') }}
           restore-keys: buildroot-dl-
 
       - name: Cache ccache (${{ matrix.board }})
         uses: actions/cache@v4
         with:
-          path: buildroot-ccache/${{ matrix.board }}
+          path: ${{ env.BR }}/ccache/${{ matrix.board }}
           key: buildroot-ccache-${{ matrix.board }}-${{ github.sha }}
           restore-keys: buildroot-ccache-${{ matrix.board }}-
 
       - name: Download Buildroot 2024.02 LTS
         run: |
-          mkdir -p buildroot
+          mkdir -p "$BR/root"
           curl -L https://buildroot.org/downloads/buildroot-2024.02.tar.gz \
-            | tar xz --strip-components=1 -C buildroot
+            | tar xz --strip-components=1 -C "$BR/root"
 
       - name: Configure (${{ matrix.board }})
         run: |
-          mkdir -p buildroot/output/${{ matrix.board }}
-          make -C buildroot \
-            O=$(pwd)/buildroot/output/${{ matrix.board }} \
+          mkdir -p "$BR/output/${{ matrix.board }}"
+          make -C "$BR/root" \
+            O="$BR/output/${{ matrix.board }}" \
             BR2_EXTERNAL=$(pwd)/buildroot-external \
-            BR2_DL_DIR=$(pwd)/buildroot-dl \
-            BR2_CCACHE_DIR=$(pwd)/buildroot-ccache/${{ matrix.board }} \
+            BR2_DL_DIR="$BR/dl" \
+            BR2_CCACHE_DIR="$BR/ccache/${{ matrix.board }}" \
             rod_${{ matrix.board }}_defconfig
 
       - name: Build (${{ matrix.board }})
-        run: make -C buildroot/output/${{ matrix.board }}
+        run: make -C "$BR/output/${{ matrix.board }}"
         timeout-minutes: 240
 
       - name: Disk space after build
@@ -90,8 +98,8 @@ jobs:
 
       - name: Compress image
         run: |
-          gzip -k buildroot/output/${{ matrix.board }}/images/sdcard.img
-          mv buildroot/output/${{ matrix.board }}/images/sdcard.img.gz \
+          gzip -k "$BR/output/${{ matrix.board }}/images/sdcard.img"
+          mv "$BR/output/${{ matrix.board }}/images/sdcard.img.gz" \
              rod-${{ matrix.board }}-${{ github.ref_name }}.img.gz
 
       - name: Upload artifact
