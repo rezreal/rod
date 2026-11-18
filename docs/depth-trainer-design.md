@@ -114,7 +114,11 @@ to the conservative starting values, never to larger ones.
 
 Phase, submerged-time countdown, rest countdown, depth gauge, big hold-to-run
 button (pointer/touch capture, release on blur/visibilitychange), emergency
-"retract now" button. Tones (`web/src/audio/tones.ts`): a soft cue ~2 s before
+"retract now" button. Spoken guidance (Web Speech API, `web/src/lib/depthSpeech.ts`
+maps status transitions to cues, `web/src/audio/speech.ts` speaks them) is a purely
+supplementary UI layer: on by default, per-viewer voice/rate/volume prefs, cancels
+stale speech on every cue, critical cues (emergency retract, pre-move countdown)
+interrupt, and it is a no-op when `speechSynthesis` is unavailable. Tones (`web/src/audio/tones.ts`): a soft cue ~2 s before
 advancing and before the planned retract; a distinct cue on emergency retract.
 
 ## Tests (planned)

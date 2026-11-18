@@ -4,6 +4,8 @@ import { useStatus } from '../../hooks/useDeviceState'
 import { fmtClock, fmtLongCountdown, phaseLabel } from '../../lib/depthTrainer'
 import type { DepthHistoryEntry, DepthProgress, DepthRating, DepthTrainerState } from '../../types/sscp'
 import { DepthTrainerManual } from './DepthTrainerManual'
+import { DepthSpeechSettings } from './DepthSpeechSettings'
+import { primeSpeech } from '../../audio/speech'
 
 const RATING_LABELS: Record<DepthRating, string> = {
   comfortable: 'Comfortable',
@@ -70,6 +72,7 @@ function IdleView({ progress }: { progress: DepthProgress | undefined }) {
 
   function start() {
     if (!canStart) return
+    primeSpeech() // user gesture: lets the browser speak later cues
     send({ type: 'depth_start' })
   }
 
@@ -124,6 +127,8 @@ function IdleView({ progress }: { progress: DepthProgress | undefined }) {
           Save settings
         </button>
       </div>
+
+      <DepthSpeechSettings />
 
       {/* Start */}
       <div className="flex flex-col gap-2">
@@ -247,13 +252,13 @@ function ActiveView({ live, progress }: { live: DepthTrainerState | undefined; p
           </p>
           <div className="grid grid-cols-2 gap-2">
             <button
-              onClick={() => send({ type: 'depth_warmup_continue' })}
+              onClick={() => { primeSpeech(); send({ type: 'depth_warmup_continue' }) }}
               className="py-3 rounded-xl text-sm font-semibold bg-purple-600 hover:bg-purple-500 text-white transition-colors"
             >
               Continue
             </button>
             <button
-              onClick={() => send({ type: 'depth_warmup_extend' })}
+              onClick={() => { primeSpeech(); send({ type: 'depth_warmup_extend' }) }}
               disabled={!live.warmupCanExtend}
               className="py-3 rounded-xl text-sm font-semibold border border-purple-400/60 text-purple-100 hover:bg-purple-900/60 disabled:opacity-40 disabled:hover:bg-transparent transition-colors"
             >

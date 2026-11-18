@@ -102,6 +102,24 @@ export function DepthTrainerManual() {
         </ul>
       </Section>
 
+      <Section title="Spoken guidance">
+        The page can talk you through a session with your browser's built-in
+        text-to-speech: short cues such as <Em>"Warm-up, gentle strokes"</Em>,{' '}
+        <Em>"Rest, 20 seconds"</Em>, a <Em>"Moving in three, two, one"</Em> countdown
+        before the rod goes out, <Em>"Coming out in three, two, one"</Em> at the end of a
+        hold, <Em>"Released, retracting"</Em> if the hand switch lapses, and{' '}
+        <Em>"Session done. How did that feel?"</Em>. It is on by default at a calm
+        pace; the card above the Start button lets you turn it off, pick a voice and set
+        rate and volume (saved per device, English phrases only). Spoken guidance is a
+        convenience only: the tones still play, it never moves or holds back the rod, and
+        if your browser has no speech support the session works exactly the same.
+        Retract and countdown cues cut off whatever is being spoken. Browsers only allow
+        speech after you have tapped something, so Start (and Continue / +1 min) wake it
+        up; use <Em>Test voice</Em> to check the volume. Don't rely on it: phone silent
+        mode, a Bluetooth speaker that has gone to sleep or a missing voice can all keep
+        it quiet.
+      </Section>
+
       <Section title="Limits you should know about">
         <p className="rounded-lg bg-rose-950/40 border border-rose-700/40 px-3 py-2 text-rose-300">
           If the controller itself faults, the e-stop is pressed, power is cut or the

@@ -17,6 +17,7 @@ import { ProgramBadge } from './components/dashboard/ProgramBadge'
 import { ProgramDrawer } from './components/programs/ProgramDrawer'
 import { MaintenancePanel } from './components/maintenance/MaintenancePanel'
 import { AudioFeedback } from './components/AudioFeedback'
+import { DepthSpeech } from './components/DepthSpeech'
 import { fmtMm, fmtPct } from './lib/units'
 
 function Dashboard() {
@@ -37,6 +38,7 @@ function Dashboard() {
   return (
     <div className="flex flex-col h-full">
       <AudioFeedback />
+      <DepthSpeech />
 
       <TopBar onSettings={() => setShowMaintenance(true)} />
 
