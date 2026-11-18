@@ -180,6 +180,8 @@ pub struct Actuator {
     pub trace: Trace,
     #[serde(default)]
     pub tempo: Tempo,
+    #[serde(default)]
+    pub depth_trainer: DepthTrainer,
 }
 
 /// "Impale" interactive-program parameters. Holding the button extends the rod
@@ -401,6 +403,142 @@ impl Default for Tempo {
         }
     }
 }
+
+/// Depth Trainer parameters (see `src/modes/depth.rs`).
+///
+/// Safety-relevant values are only *tightened* by config: the code clamps every
+/// field to a compile-time floor/ceiling (`modes::depth::Limits::from_config`),
+/// so a config file can make the trainer slower, shorter or more cautious but
+/// can never raise the breath-hold ceiling or turn the retract off.
+#[derive(Debug, Clone, Deserialize)]
+pub struct DepthTrainer {
+    /// Outward speed (mm/s) for the bulk of each advance.
+    #[serde(default = "dt_speed")]
+    pub speed_mm_s: f32,
+    /// Speed (mm/s) over the last `approach_zone_mm` before the deepest point.
+    #[serde(default = "dt_approach_speed")]
+    pub approach_speed_mm_s: f32,
+    #[serde(default = "dt_approach_zone")]
+    pub approach_zone_mm: f32,
+    /// Normal (non-emergency) return speed (mm/s).
+    #[serde(default = "dt_return_speed")]
+    pub return_speed_mm_s: f32,
+    /// Emergency retract speed (mm/s). Always faster than the advance.
+    #[serde(default = "dt_retract_speed")]
+    pub retract_speed_mm_s: f32,
+    #[serde(default = "dt_accel")]
+    pub accel_g: f32,
+    #[serde(default = "dt_retract_accel")]
+    pub retract_accel_g: f32,
+    /// Max age (ms) of the hand-switch/position reading before the deadman
+    /// counts as released.
+    #[serde(default = "dt_deadman_ms")]
+    pub deadman_timeout_ms: u64,
+    /// Fraction of the recorded breath-hold one excursion may use (≤ 0.6).
+    #[serde(default = "dt_breath_fraction")]
+    pub breath_fraction: f32,
+    /// Absolute per-excursion ceiling (s), ≤ 20.
+    #[serde(default = "dt_max_hold")]
+    pub max_hold_s: f32,
+    /// Rest after a block = max(rest_factor × time submerged, min_rest_s); both ≥ floors.
+    #[serde(default = "dt_rest_factor")]
+    pub rest_factor: f32,
+    #[serde(default = "dt_min_rest")]
+    pub min_rest_s: f32,
+    /// Pause at the breathing-safe turnaround between oscillation strokes (≥ 2 s).
+    #[serde(default = "dt_breath_window")]
+    pub breath_window_s: f32,
+    /// Depth step (mm) per advance (≤ 2).
+    #[serde(default = "dt_step")]
+    pub step_mm: f32,
+    /// Minimum hours between depth increases (≥ 12).
+    #[serde(default = "dt_cooldown_h")]
+    pub advance_cooldown_h: f32,
+    #[serde(default = "dt_hold_step")]
+    pub hold_step_s: f32,
+    #[serde(default = "dt_start_osc")]
+    pub start_oscillation_depth_mm: f32,
+    #[serde(default = "dt_start_hold_depth")]
+    pub start_hold_depth_mm: f32,
+    #[serde(default = "dt_start_hold_s")]
+    pub start_hold_s: f32,
+    #[serde(default = "dt_warmup")]
+    pub warmup_strokes: u32,
+    #[serde(default = "dt_osc_sets")]
+    pub oscillation_sets: u32,
+    #[serde(default = "dt_strokes")]
+    pub strokes_per_set: u32,
+    #[serde(default = "dt_hold_sets")]
+    pub hold_sets: u32,
+    #[serde(default = "dt_cooldown_strokes")]
+    pub cooldown_strokes: u32,
+    /// Countdown (s) with the switch held before each advance.
+    #[serde(default = "dt_ready")]
+    pub ready_countdown_s: f32,
+    /// Where progress is persisted (relative to the working dir, like `device-uid`).
+    #[serde(default = "dt_progress_file")]
+    pub progress_file: String,
+}
+
+impl Default for DepthTrainer {
+    fn default() -> Self {
+        DepthTrainer {
+            speed_mm_s: dt_speed(),
+            approach_speed_mm_s: dt_approach_speed(),
+            approach_zone_mm: dt_approach_zone(),
+            return_speed_mm_s: dt_return_speed(),
+            retract_speed_mm_s: dt_retract_speed(),
+            accel_g: dt_accel(),
+            retract_accel_g: dt_retract_accel(),
+            deadman_timeout_ms: dt_deadman_ms(),
+            breath_fraction: dt_breath_fraction(),
+            max_hold_s: dt_max_hold(),
+            rest_factor: dt_rest_factor(),
+            min_rest_s: dt_min_rest(),
+            breath_window_s: dt_breath_window(),
+            step_mm: dt_step(),
+            advance_cooldown_h: dt_cooldown_h(),
+            hold_step_s: dt_hold_step(),
+            start_oscillation_depth_mm: dt_start_osc(),
+            start_hold_depth_mm: dt_start_hold_depth(),
+            start_hold_s: dt_start_hold_s(),
+            warmup_strokes: dt_warmup(),
+            oscillation_sets: dt_osc_sets(),
+            strokes_per_set: dt_strokes(),
+            hold_sets: dt_hold_sets(),
+            cooldown_strokes: dt_cooldown_strokes(),
+            ready_countdown_s: dt_ready(),
+            progress_file: dt_progress_file(),
+        }
+    }
+}
+
+fn dt_speed() -> f32 { 4.0 }
+fn dt_approach_speed() -> f32 { 1.6 }
+fn dt_approach_zone() -> f32 { 5.0 }
+fn dt_return_speed() -> f32 { 10.0 }
+fn dt_retract_speed() -> f32 { 20.0 }
+fn dt_accel() -> f32 { 0.05 }
+fn dt_retract_accel() -> f32 { 0.2 }
+fn dt_deadman_ms() -> u64 { 200 }
+fn dt_breath_fraction() -> f32 { 0.6 }
+fn dt_max_hold() -> f32 { 20.0 }
+fn dt_rest_factor() -> f32 { 3.0 }
+fn dt_min_rest() -> f32 { 20.0 }
+fn dt_breath_window() -> f32 { 2.0 }
+fn dt_step() -> f32 { 2.0 }
+fn dt_cooldown_h() -> f32 { 24.0 }
+fn dt_hold_step() -> f32 { 1.0 }
+fn dt_start_osc() -> f32 { 10.0 }
+fn dt_start_hold_depth() -> f32 { 5.0 }
+fn dt_start_hold_s() -> f32 { 5.0 }
+fn dt_warmup() -> u32 { 3 }
+fn dt_osc_sets() -> u32 { 3 }
+fn dt_strokes() -> u32 { 6 }
+fn dt_hold_sets() -> u32 { 3 }
+fn dt_cooldown_strokes() -> u32 { 2 }
+fn dt_ready() -> f32 { 3.0 }
+fn dt_progress_file() -> String { "depth-trainer.json".into() }
 
 /// Pulse (heart-rate-reactive oscillation) parameters. Stroke velocity is
 /// `bpm × factor`, clamped to [min, max]. See `src/modes/pulse.rs`.

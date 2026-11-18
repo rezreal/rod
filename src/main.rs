@@ -18,6 +18,7 @@ use rod::modes::hamp::HampTask;
 use rod::modes::hsp::HspTask;
 use rod::modes::impale::ImpaleTask;
 use rod::modes::learn::LearnTask;
+use rod::modes::depth::DepthTask;
 use rod::modes::plumb::PlumbTask;
 use rod::modes::pulse::PulseTask;
 use rod::modes::ramp::RampTask;
@@ -78,6 +79,10 @@ async fn main() -> anyhow::Result<()> {
     let piupiu_autoconnect = rod::devices::load_autoconnect("piupiu", cfg.devices.piupiu.enable);
     app_state.coyote_autoconnect = coyote_autoconnect;
     app_state.piupiu_autoconnect = piupiu_autoconnect;
+    // Depth Trainer progress (conservative defaults if absent/corrupt).
+    app_state.depth_progress = rod::modes::depth::Progress::load(
+        &rod::modes::depth::Limits::from_config(&cfg).progress_path,
+    );
     let state = Arc::new(RwLock::new(app_state));
     let (cmd_tx, cmd_rx) = mpsc::channel(CMD_CHANNEL);
     // Modes/dispatcher send here; the motion shaper forwards to the driver,
@@ -100,6 +105,7 @@ async fn main() -> anyhow::Result<()> {
     let (echo_tx, echo_rx) = mpsc::channel(CTRL_CHANNEL);
     let (trace_tx, trace_rx) = mpsc::channel(CTRL_CHANNEL);
     let (tempo_tx, tempo_rx) = mpsc::channel(CTRL_CHANNEL);
+    let (depth_tx, depth_rx) = mpsc::channel(CTRL_CHANNEL);
     let (coyote_tx, coyote_rx) = mpsc::channel(CTRL_CHANNEL);
     let (piupiu_tx, piupiu_rx) = mpsc::channel(CTRL_CHANNEL);
     let (sensor_tx, sensor_rx) = mpsc::channel(CTRL_CHANNEL);
@@ -139,6 +145,7 @@ async fn main() -> anyhow::Result<()> {
     tokio::spawn(EchoTask::new(state.clone(), shape_tx.clone(), &cfg).run(echo_rx));
     tokio::spawn(TraceTask::new(state.clone(), shape_tx.clone(), &cfg).run(trace_rx));
     tokio::spawn(TempoTask::new(state.clone(), shape_tx.clone(), &cfg).run(tempo_rx));
+    tokio::spawn(DepthTask::new(state.clone(), shape_tx.clone(), &cfg).run(depth_rx));
 
     // ── Biosensors (BLE central) ──
     // Always spawn the task so the UI can pair on demand; if configured to
@@ -189,6 +196,7 @@ async fn main() -> anyhow::Result<()> {
         echo: echo_tx.clone(),
         trace: trace_tx.clone(),
         tempo: tempo_tx.clone(),
+        depth: depth_tx.clone(),
         coyote: coyote_tx.clone(),
         piupiu: piupiu_tx.clone(),
         sensors: sensor_tx.clone(),

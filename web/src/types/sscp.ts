@@ -1,7 +1,7 @@
 // Rod Control Protocol — TypeScript types
 // Mirrors proto/sscp/v1/sscp.proto
 
-export type ProgramMode = 'idle' | 'hamp' | 'hdsp' | 'hsp' | 'homing' | 'drill' | 'ramp' | 'game' | 'cycle' | 'learn' | 'pulse' | 'impale' | 'plumb' | 'surge' | 'tide' | 'echo' | 'trace' | 'tempo'
+export type ProgramMode = 'idle' | 'hamp' | 'hdsp' | 'hsp' | 'homing' | 'drill' | 'ramp' | 'game' | 'cycle' | 'learn' | 'pulse' | 'impale' | 'plumb' | 'surge' | 'tide' | 'echo' | 'trace' | 'tempo' | 'depth_trainer'
 /** Phase of the learn (teach-and-repeat) program. */
 export type LearnPhase = 'armed' | 'recording' | 'ready' | 'playing'
 export type Direction = 'extending' | 'retracting' | 'stopped'
@@ -182,6 +182,89 @@ export interface TempoState {
   periodMs: number
 }
 
+/** Phase of a Depth Trainer session (see `DepthTrainerState.phase`).
+ *  Emergency is NOT a phase: it is the `emergency` flag; `retracting` is the
+ *  phase while the rod is being brought back to the origin. */
+export type DepthPhase =
+  | 'arming'
+  | 'warmup'
+  | 'oscillation'
+  | 'hold'
+  | 'rest'
+  | 'cooldown'
+  | 'retracting'
+  | 'rating'
+  | 'ended'
+
+/** Rating sent with `depth_rate`. */
+export type DepthRating = 'comfortable' | 'okay' | 'too_much'
+
+/** One finished session in the persisted Depth Trainer history (last 10, newest last). */
+export interface DepthHistoryEntry {
+  /** Epoch milliseconds the session ended. */
+  atMs: number
+  oscillationDepthMm: number
+  holdDepthMm: number
+  holdS: number
+  earlyReleases: number
+  /** A `DepthRating` value, or null if the session was never rated. */
+  rating: string | null
+}
+
+/** Persisted Depth Trainer progression + settings. ALWAYS present in telemetry. */
+export interface DepthProgress {
+  /** User-recorded breath-hold (s); null until set. */
+  breathHoldS: number | null
+  /** Breathing-safe offset (mm beyond the origin); 0 = origin = most conservative. */
+  breathOffsetMm: number
+  /** NEXT session's targets (mm beyond the origin / seconds). */
+  oscillationDepthMm: number
+  holdDepthMm: number
+  holdS: number
+  /** Per-excursion cap (s) = min(0.6 x breath-hold, 20 s); null until a breath-hold is set. */
+  holdCapS: number | null
+  sessions: number
+  /** Seconds until the 24 h cooldown elapses; 0 = a step up is allowed now. */
+  nextAdvanceInS: number
+  /** Two consecutive early-release sessions: offer a (user-confirmed) step back. */
+  suggestStepBack: boolean
+  /** `depth_start` is ignored unless this is true. */
+  canStart: boolean
+  /** Why `canStart` is false. */
+  blockReason: string | null
+  history: DepthHistoryEntry[]
+}
+
+/** Live Depth Trainer session state (present only while mode = depth_trainer). */
+export interface DepthTrainerState {
+  phase: DepthPhase
+  /** 1-based; 0 when not applicable. */
+  setIndex: number
+  setCount: number
+  strokeIndex: number
+  strokeCount: number
+  targetDepthMm: number
+  /** Planned dwell of the current hold (s); null when not holding. */
+  plannedHoldS: number | null
+  /** Sensed depth beyond the work origin (mm). */
+  depthBeyondOriginMm: number
+  /** Time submerged (sensed beyond origin + breath offset) (s). */
+  submergedS: number
+  submergedCapS: number | null
+  restRemainingS: number
+  restTotalS: number
+  /** Hardware hand switch currently counted as held. */
+  deadmanHeld: boolean
+  /** The rod will not move until the hand switch is held. */
+  awaitingDeadman: boolean
+  emergency: boolean
+  emergencyReason: string | null
+  /** The deadman was released mid-set at least once this session. */
+  earlyRelease: boolean
+  /** Seconds to the next advance / planned retract when <= 3 s, else null. */
+  cueSoonS: number | null
+}
+
 export interface HspState {
   state: HspPlayState
   bufferPoints: number
@@ -256,6 +339,8 @@ export interface Telemetry {
   echo?: EchoState
   trace?: TraceState
   tempo?: TempoState
+  depthProgress?: DepthProgress
+  depthTrainer?: DepthTrainerState
 }
 
 // ── Commands ────────────────────────────────────────────────
@@ -389,6 +474,18 @@ export interface TempoStartCommand { type: 'tempo_start' }
 /** Exit tempo mode — stop motion, release servo. */
 export interface TempoStopCommand  { type: 'tempo_stop' }
 
+/** Arm a Depth Trainer session. Ignored unless `depthProgress.canStart`. Does
+ *  NOT move the rod: motion only happens while the hardware hand switch is held. */
+export interface DepthStartCommand { type: 'depth_start' }
+/** Emergency retract to the origin and leave the mode. */
+export interface DepthStopCommand  { type: 'depth_stop' }
+/** Set persisted breath-hold and breathing-safe offset. Both required; ignored while a session is active. */
+export interface DepthSettingsCommand { type: 'depth_settings'; breathHoldS: number; breathOffsetMm: number }
+/** Rate the finished session (only honoured in the `rating` phase). */
+export interface DepthRateCommand  { type: 'depth_rate'; rating: DepthRating }
+/** User-confirmed step back in progression (idle only). */
+export interface DepthStepBackCommand { type: 'depth_step_back' }
+
 /** Set DG-LAB Coyote per-channel strength (bridge clamps to the safety cap). */
 export interface CoyoteSetStrengthCommand { type: 'coyote_set_strength'; a: number; b: number }
 /** Make the Coyote follow the rod's motion intensity (or stop following). */
@@ -494,6 +591,11 @@ export type Command =
   | TraceStopCommand
   | TempoStartCommand
   | TempoStopCommand
+  | DepthStartCommand
+  | DepthStopCommand
+  | DepthSettingsCommand
+  | DepthRateCommand
+  | DepthStepBackCommand
 
 export interface HspPoint {
   timeMs: number

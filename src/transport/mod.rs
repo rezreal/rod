@@ -144,6 +144,7 @@ mod tests {
         let (echo_tx, _ec) = mpsc::channel(16);
         let (trace_tx, _tr) = mpsc::channel(16);
         let (tempo_tx, _tp) = mpsc::channel(16);
+        let (depth_tx, _dp) = mpsc::channel(16);
         let modes = crate::modes::ModeControls {
             drill: drill_tx,
             ramp: ramp_tx,
@@ -161,6 +162,7 @@ mod tests {
             echo: echo_tx,
             trace: trace_tx,
             tempo: tempo_tx,
+            depth: depth_tx,
         };
         let d = Dispatcher::new(
             state,

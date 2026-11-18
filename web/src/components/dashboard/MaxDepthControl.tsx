@@ -18,7 +18,8 @@ const SAFETY_MARGIN_MM = 3
  * plumb, surge, tide, trace, tempo, and the fixed-zone games (edge & recover,
  * gauntlet, deadman's climb, stillness). "Max depth" bounds the modes that
  * press toward or hold a single far point — ramp, HDSP, HSP, learn, drill,
- * impale, echo.
+ * impale, echo — and the ceiling for Depth Trainer (which targets exact mm
+ * beyond the origin, unscaled).
  *
  * Comfortable depth never exceeds max depth (it may equal it — no minimum
  * gap is enforced). Max depth is authoritative: lowering it pulls comfortable
@@ -124,7 +125,7 @@ export function MaxDepthControl() {
 
       <DepthSlider
         label="Max depth"
-        hint="ramp, HDSP/HSP, learn, drill, impale, echo"
+        hint="ramp, HDSP/HSP, learn, drill, impale, echo, depth trainer"
         value={max}
         limitMin={MIN}
         limitMax={stroke}

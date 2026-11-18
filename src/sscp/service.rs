@@ -36,7 +36,7 @@ mod imp {
     use super::*;
     use crate::config::Config;
     use crate::modes::{
-        CycleControl, DrillControl, EchoControl, GameControl, GameStartParams, ImpaleControl,
+        CycleControl, DepthControl, DrillControl, EchoControl, GameControl, GameStartParams, ImpaleControl,
         LearnControl, ModeControls, PlumbControl, PulseControl, RampControl, SurgeControl, TempoControl,
         TideControl, TraceControl,
     };
@@ -798,6 +798,25 @@ mod imp {
                     .send(TempoControl::Stop)
                     .await
                     .map_err(|e| e.to_string())?;
+            }
+            Command::DepthStart => {
+                modes.depth.send(DepthControl::Start).await.map_err(|e| e.to_string())?;
+            }
+            Command::DepthStop => {
+                modes.depth.send(DepthControl::Stop).await.map_err(|e| e.to_string())?;
+            }
+            Command::DepthSettings { breath_hold_s, breath_offset_mm } => {
+                modes
+                    .depth
+                    .send(DepthControl::Settings { breath_hold_s, breath_offset_mm })
+                    .await
+                    .map_err(|e| e.to_string())?;
+            }
+            Command::DepthRate { rating } => {
+                modes.depth.send(DepthControl::Rate(rating)).await.map_err(|e| e.to_string())?;
+            }
+            Command::DepthStepBack => {
+                modes.depth.send(DepthControl::StepBack).await.map_err(|e| e.to_string())?;
             }
         }
         Ok(())

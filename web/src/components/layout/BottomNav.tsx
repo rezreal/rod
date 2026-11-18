@@ -7,7 +7,7 @@ interface Props {
 export function BottomNav({ onSettings }: Props) {
   const { activeProgram, switchProgram } = useProgramSwitch()
 
-  const items: { id: 'hamp' | 'hdsp' | 'hsp' | 'drill' | 'ramp' | 'game' | 'cycle' | 'learn' | 'pulse' | 'impale' | 'plumb' | 'surge' | 'tide' | 'echo' | 'trace' | 'tempo'; label: string; icon: React.ReactNode }[] = [
+  const items: { id: 'hamp' | 'hdsp' | 'hsp' | 'drill' | 'ramp' | 'game' | 'cycle' | 'learn' | 'pulse' | 'impale' | 'plumb' | 'surge' | 'tide' | 'echo' | 'trace' | 'tempo' | 'depth_trainer'; label: string; icon: React.ReactNode }[] = [
     {
       id: 'hamp',
       label: 'Oscillate',
@@ -160,6 +160,15 @@ export function BottomNav({ onSettings }: Props) {
       icon: (
         <svg viewBox="0 0 24 24" className="w-5 h-5" fill="none" stroke="currentColor" strokeWidth={2}>
           <path strokeLinecap="round" strokeLinejoin="round" d="M9 3h6l3 18H6L9 3zM12 3v8M9.5 13h5" />
+        </svg>
+      ),
+    },
+    {
+      id: 'depth_trainer',
+      label: 'Depth',
+      icon: (
+        <svg viewBox="0 0 24 24" className="w-5 h-5" fill="none" stroke="currentColor" strokeWidth={2}>
+          <path strokeLinecap="round" strokeLinejoin="round" d="M4 4h16M12 8v10M9 15l3 3 3-3M7 21h10" />
         </svg>
       ),
     },

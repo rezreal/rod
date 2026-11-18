@@ -1,8 +1,9 @@
 import { useEffect, useRef } from 'react'
 import { useStatus } from '../hooks/useDeviceState'
 import type { StatusState } from '../store/deviceStore'
+import { crossedCueSoon } from '../lib/depthTrainer'
 import { usePreferencesStore } from '../store/preferencesStore'
-import { playFault, playInputNeeded, playMistake, playSuccess } from '../audio/tones'
+import { playCueSoon, playEmergencyRetract, playFault, playInputNeeded, playMistake, playSuccess } from '../audio/tones'
 
 /**
  * Invisible watcher: diffs consecutive status snapshots and plays a cue on
@@ -46,6 +47,14 @@ export function AudioFeedback() {
       // Reaching the retract deadline without an explicit stop is the win
       // condition for a hold cycle, not a mistake — see ImpaleRuntime::won.
       if (!prev.impale.won && status.impale.won) { playSuccess(); return }
+    }
+
+    // Depth Trainer: a distinct cue when the trainer starts an emergency
+    // retract, and a soft heads-up once each time the "planned retract /
+    // advance" countdown crosses ~2 s.
+    if (!prev.depthTrainer?.emergency && status.depthTrainer?.emergency) { playEmergencyRetract(); return }
+    if (prev.depthTrainer && status.depthTrainer) {
+      if (crossedCueSoon(prev.depthTrainer.cueSoonS, status.depthTrainer.cueSoonS)) { playCueSoon(); return }
     }
 
     if (prev.learn && status.learn) {

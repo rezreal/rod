@@ -20,6 +20,7 @@ const MODE_LABELS: Record<ProgramMode, string> = {
   echo:   'ECHO',
   trace:  'TRACE',
   tempo:  'TEMPO',
+  depth_trainer: 'DEPTH',
 }
 
 const MODE_COLORS: Record<ProgramMode, string> = {
@@ -41,6 +42,7 @@ const MODE_COLORS: Record<ProgramMode, string> = {
   echo:   'bg-emerald-500/20 text-emerald-400 border border-emerald-500/30',
   trace:  'bg-violet-500/20 text-violet-400 border border-violet-500/30',
   tempo:  'bg-amber-500/20 text-amber-400 border border-amber-500/30',
+  depth_trainer: 'bg-purple-500/20 text-purple-400 border border-purple-500/30',
 }
 
 export function ProgramBadge() {

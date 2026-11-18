@@ -11,7 +11,7 @@ use tracing::{debug, warn};
 use crate::config::{Config, MotionProfile};
 use crate::modes::handswitch::HandEdge;
 use crate::modes::{
-    CycleControl, DrillControl, EchoControl, GameControl, HampControl, HspControl, ImpaleControl,
+    CycleControl, DepthControl, DrillControl, EchoControl, GameControl, HampControl, HspControl, ImpaleControl,
     LearnControl, ModeControls, PlumbControl, PulseControl, RampControl, SurgeControl,
     TempoControl, TideControl, TraceControl,
 };
@@ -584,6 +584,9 @@ impl Dispatcher {
         if prev == AppMode::Tempo && mode != AppMode::Tempo {
             let _ = self.modes.tempo.send(TempoControl::Stop).await;
         }
+        if prev == AppMode::DepthTrainer && mode != AppMode::DepthTrainer {
+            let _ = self.modes.depth.send(DepthControl::Stop).await;
+        }
         self.state.write().await.set_mode(mode)
     }
 
@@ -702,7 +705,10 @@ impl Dispatcher {
             | AppMode::Tide
             | AppMode::Echo
             | AppMode::Trace
-            | AppMode::Tempo => {}
+            | AppMode::Tempo
+            // Depth Trainer reads the switch itself (it is the deadman), and
+            // must never be driven by the central router or the web UI.
+            | AppMode::DepthTrainer => {}
             AppMode::Idle | AppMode::Homing | AppMode::Uninitialized => {}
         }
     }
@@ -730,6 +736,9 @@ impl Dispatcher {
         let _ = self.modes.echo.send(EchoControl::Stop).await;
         let _ = self.modes.trace.send(TraceControl::Stop).await;
         let _ = self.modes.tempo.send(TempoControl::Stop).await;
+        // Depth Trainer: Stop is "retract to the origin, then exit" — it must
+        // reach the task even though the mode was just flipped to Idle above.
+        let _ = self.modes.depth.send(DepthControl::Stop).await;
         // Safety: StopAll must also zero any external e-stim device and
         // release a held lube squirt.
         let _ = self
@@ -983,6 +992,7 @@ mod tests {
         let (echo_tx, _echo_rx) = mpsc::channel(16);
         let (trace_tx, _trace_rx) = mpsc::channel(16);
         let (tempo_tx, _tempo_rx) = mpsc::channel(16);
+        let (depth_tx, _depth_rx) = mpsc::channel(16);
         let modes = crate::modes::ModeControls {
             drill: drill_tx,
             ramp: ramp_tx,
@@ -1000,6 +1010,7 @@ mod tests {
             echo: echo_tx,
             trace: trace_tx,
             tempo: tempo_tx,
+            depth: depth_tx,
         };
         let d = Dispatcher::new(
             state.clone(),

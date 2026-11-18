@@ -58,6 +58,10 @@ pub enum AppMode {
     Trace,
     /// Tempo: tap out a rhythm to set the stroke period; a long hold stops it.
     Tempo,
+    /// Depth Trainer: slow multi-session training to hold and oscillate at
+    /// gradually increasing depth. Hand-switch deadman; releasing it retracts
+    /// the rod to the work-piece origin (see `src/modes/depth.rs`).
+    DepthTrainer,
 }
 
 /// DG-LAB Coyote e-stim device state (BLE central; see `src/devices/coyote.rs`).
@@ -288,6 +292,7 @@ impl AppMode {
             AppMode::Echo => "echo",
             AppMode::Trace => "trace",
             AppMode::Tempo => "tempo",
+            AppMode::DepthTrainer => "depth_trainer",
         }
     }
 }
@@ -503,6 +508,78 @@ pub struct TempoRuntime {
     pub period_ms: u64,
 }
 
+/// Phase of a Depth Trainer session (see `src/modes/depth.rs`).
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Default)]
+pub enum DepthPhase {
+    /// Rod at the origin; waiting for the hand switch to be held to begin.
+    #[default]
+    Arming,
+    Warmup,
+    Oscillation,
+    Hold,
+    /// Mandatory rest at the origin between sets/holds.
+    Rest,
+    Cooldown,
+    /// Retracting to the origin (end of a block, or an emergency).
+    Retracting,
+    /// Session finished; waiting for the user's comfort rating.
+    Rating,
+    Ended,
+}
+
+impl DepthPhase {
+    pub fn as_str(self) -> &'static str {
+        match self {
+            DepthPhase::Arming => "arming",
+            DepthPhase::Warmup => "warmup",
+            DepthPhase::Oscillation => "oscillation",
+            DepthPhase::Hold => "hold",
+            DepthPhase::Rest => "rest",
+            DepthPhase::Cooldown => "cooldown",
+            DepthPhase::Retracting => "retracting",
+            DepthPhase::Rating => "rating",
+            DepthPhase::Ended => "ended",
+        }
+    }
+}
+
+/// Depth Trainer live runtime (what the UI shows; progress lives separately in
+/// [`AppState::depth_progress`]).
+#[derive(Debug, Clone, PartialEq, Default)]
+pub struct DepthRuntime {
+    pub active: bool,
+    /// True from session start until the rod is back at the origin after the
+    /// final retract. While set, the driver passes this task's positions through
+    /// *unscaled* (exact mm beyond the origin) even though `stop_everything` may
+    /// already have flipped the mode to Idle — so the safety retract always
+    /// targets the real origin.
+    pub driving: bool,
+    pub phase: DepthPhase,
+    pub set_index: u32,
+    pub set_count: u32,
+    pub stroke_index: u32,
+    pub stroke_count: u32,
+    /// Depth (mm beyond origin) of the current block.
+    pub target_depth_mm: f32,
+    /// Planned dwell (s) of the current hold block, if any.
+    pub planned_hold_s: Option<f32>,
+    /// Sensed position beyond the origin (mm, ≥ 0).
+    pub depth_beyond_origin_mm: f32,
+    /// Time spent deeper than the breathing-safe offset in the current block.
+    pub submerged_s: f32,
+    pub submerged_cap_s: Option<f32>,
+    pub rest_remaining_s: f32,
+    pub rest_total_s: f32,
+    pub deadman_held: bool,
+    pub awaiting_deadman: bool,
+    pub emergency: bool,
+    pub emergency_reason: Option<String>,
+    /// The deadman was released mid-block at least once this session.
+    pub early_release: bool,
+    /// Seconds until the next advance / planned retract, when imminent.
+    pub cue_soon_s: Option<f32>,
+}
+
 #[derive(Debug, Clone)]
 pub struct AppState {
     pub mode: AppMode,
@@ -539,6 +616,10 @@ pub struct AppState {
     pub alarm_major: bool,       // DSS1.ALMH
     /// Hand/palm switch wired to the controller's PIO input (DIPM bit 0).
     pub hand_switch: bool,
+    /// Incremented by the driver on every *successful* status poll. Safety
+    /// tasks use it to tell a fresh `hand_switch`/`position_mm` from a stale
+    /// one left behind by a dead link (see `modes::depth`).
+    pub status_seq: u64,
 
     /// A push-to-contact calibration is currently running.
     pub calibrating: bool,
@@ -582,6 +663,9 @@ pub struct AppState {
     pub echo: EchoRuntime,
     pub trace: TraceRuntime,
     pub tempo: TempoRuntime,
+    pub depth: DepthRuntime,
+    /// Depth Trainer persisted progress (loaded at boot, saved by its task).
+    pub depth_progress: crate::modes::depth::Progress,
     pub sensors: SensorState,
     pub coyote: CoyoteState,
     pub piupiu: PiuPiuState,
@@ -631,6 +715,7 @@ impl AppState {
             alarm_minor: false,
             alarm_major: false,
             hand_switch: false,
+            status_seq: 0,
             calibrating: false,
             work_origin_mm: None,
             comfortable_depth_mm: 0.0,
@@ -653,6 +738,8 @@ impl AppState {
             echo: EchoRuntime::default(),
             trace: TraceRuntime::default(),
             tempo: TempoRuntime::default(),
+            depth: DepthRuntime::default(),
+            depth_progress: crate::modes::depth::Progress::default(),
             sensors: SensorState::default(),
             coyote: CoyoteState::default(),
             piupiu: PiuPiuState::default(),

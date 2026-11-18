@@ -4,6 +4,7 @@
 //! the dispatcher drives them with the control messages defined here.
 
 pub mod cycle;
+pub mod depth;
 pub mod drill;
 pub mod echo;
 pub mod games;
@@ -41,6 +42,7 @@ pub struct ModeControls {
     pub echo: mpsc::Sender<EchoControl>,
     pub trace: mpsc::Sender<TraceControl>,
     pub tempo: mpsc::Sender<TempoControl>,
+    pub depth: mpsc::Sender<DepthControl>,
     /// External e-stim device (DG-LAB Coyote); not a mode, threaded here so it
     /// rides the same control plumbing and `StopAll` reaches it.
     pub coyote: mpsc::Sender<crate::devices::CoyoteControl>,
@@ -265,4 +267,30 @@ pub enum TraceControl {
 pub enum TempoControl {
     Start,
     Stop,
+}
+
+/// How the user rated a finished Depth Trainer session.
+#[derive(Debug, Clone, Copy, PartialEq, Eq, serde::Deserialize)]
+#[serde(rename_all = "snake_case")]
+pub enum DepthRating {
+    Comfortable,
+    Okay,
+    TooMuch,
+}
+
+/// Control messages to the Depth Trainer task. There is deliberately **no**
+/// button/advance message: motion is driven only by the hardware hand switch,
+/// which the task reads itself. `Stop` is the emergency retract-and-exit.
+#[derive(Debug, Clone, PartialEq)]
+pub enum DepthControl {
+    /// Arm a session (rod stays put until the hand switch is held).
+    Start,
+    /// Emergency retract to the origin, then leave the mode.
+    Stop,
+    /// Record breath-hold (s) and breathing-safe offset (mm beyond origin).
+    Settings { breath_hold_s: f32, breath_offset_mm: f32 },
+    /// Rate the finished session (only honoured in the rating phase).
+    Rate(DepthRating),
+    /// User-confirmed step back of the stored comfortable values (idle only).
+    StepBack,
 }

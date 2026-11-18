@@ -9,7 +9,7 @@
  * re-render when a status bit flips, and vice-versa.
  */
 import { create } from 'zustand'
-import type { ConnectionState, CoyoteState, CyclePatternParams, CycleState, DeviceInfo, DrillState, EchoState, GameState, HampState, HdspState, HeartRateState, HspState, ImpaleState, LearnState, PiuPiuState, PlumbState, ProgramMode, PulseState, RampState, SurgeState, TempoState, TideState, TraceState, Telemetry } from '../types/sscp'
+import type { ConnectionState, CoyoteState, CyclePatternParams, CycleState, DepthProgress, DepthTrainerState, DeviceInfo, DrillState, EchoState, GameState, HampState, HdspState, HeartRateState, HspState, ImpaleState, LearnState, PiuPiuState, PlumbState, ProgramMode, PulseState, RampState, SurgeState, TempoState, TideState, TraceState, Telemetry } from '../types/sscp'
 
 /** Field-by-field comparison — `params` is a fresh array every telemetry
  *  tick, so reference equality never holds even when nothing changed. */
@@ -22,6 +22,14 @@ function cyclePatternsChanged(a: CyclePatternParams[] | undefined, b: CyclePatte
     p.reps !== b[i].reps ||
     p.pauseS !== b[i].pauseS,
   )
+}
+
+/** Depth Trainer telemetry is a fresh object every tick; compare by value
+ *  (the structures are small) so status subscribers only re-render on change. */
+function sameJson(a: unknown, b: unknown): boolean {
+  if (a === b) return true
+  if (a === undefined || b === undefined) return false
+  return JSON.stringify(a) === JSON.stringify(b)
 }
 
 // ── Position slice ────────────────────────────────────────────────────────────
@@ -77,13 +85,15 @@ export interface StatusState {
   echo: EchoState | undefined
   trace: TraceState | undefined
   tempo: TempoState | undefined
+  depthProgress: DepthProgress | undefined
+  depthTrainer: DepthTrainerState | undefined
 }
 
 // ── Root store ────────────────────────────────────────────────────────────────
 
 const WAVEFORM_SAMPLES = 150  // ~15 s at 100 ms
 
-export type ActiveProgram = 'hamp' | 'hdsp' | 'hsp' | 'drill' | 'ramp' | 'game' | 'cycle' | 'learn' | 'pulse' | 'impale' | 'plumb' | 'surge' | 'tide' | 'echo' | 'trace' | 'tempo'
+export type ActiveProgram = 'hamp' | 'hdsp' | 'hsp' | 'drill' | 'ramp' | 'game' | 'cycle' | 'learn' | 'pulse' | 'impale' | 'plumb' | 'surge' | 'tide' | 'echo' | 'trace' | 'tempo' | 'depth_trainer'
 
 interface DeviceStore {
   connectionState: ConnectionState
@@ -147,6 +157,8 @@ const defaultStatus: StatusState = {
   echo: undefined,
   trace: undefined,
   tempo: undefined,
+  depthProgress: undefined,
+  depthTrainer: undefined,
 }
 
 export const useDeviceStore = create<DeviceStore>((set) => ({
@@ -282,7 +294,10 @@ export const useDeviceStore = create<DeviceStore>((set) => ({
         t.trace?.lowerMm    !== prev_s.trace?.lowerMm    ||
         t.trace?.handingOff !== prev_s.trace?.handingOff ||
         // Tempo state
-        t.tempo?.periodMs !== prev_s.tempo?.periodMs
+        t.tempo?.periodMs !== prev_s.tempo?.periodMs ||
+        // Depth Trainer progress/settings and live session state
+        !sameJson(t.depthProgress, prev_s.depthProgress) ||
+        !sameJson(t.depthTrainer, prev_s.depthTrainer)
 
       const newStatus: StatusState = statusChanged ? {
         mode:             t.mode,
@@ -324,6 +339,8 @@ export const useDeviceStore = create<DeviceStore>((set) => ({
         echo:             t.echo,
         trace:            t.trace,
         tempo:            t.tempo,
+        depthProgress:    t.depthProgress,
+        depthTrainer:     t.depthTrainer,
       } : prev_s  // same object reference → no re-render for status subscribers
 
       return { position: newPos, status: newStatus }

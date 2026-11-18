@@ -57,6 +57,7 @@ the image).
 | `src/rpc/` | Generated types + `dispatch.rs` (Request → command / Response / Notification) |
 | `src/modbus/` | `protocol.rs` (register/coil/bitfield packing) + `driver.rs` (sole serial owner) |
 | `src/modes/` | `hamp.rs` (timer-driven oscillation), `hdsp.rs` (inline), `hsp.rs` (script playback) |
+| `src/modes/depth.rs` | Depth Trainer: multi-session depth training, hand-switch deadman with auto-retract, breath-hold budget — see [`docs/depth-trainer-design.md`](docs/depth-trainer-design.md) (**not tested on hardware**) |
 | `src/transport/` | `ble.rs` (bluer GATT peripheral, Linux), `cloud.rs` (deferred), shared `serve_frames` |
 | `src/translator.rs` | Units + stroke-zone mapping |
 | `src/telemetry.rs` | OpenTelemetry (env-var gated) metrics/logs/traces |

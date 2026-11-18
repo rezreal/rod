@@ -205,6 +205,60 @@ pub struct TempoTelemetry {
     pub period_ms: u64,
 }
 
+/// Live Depth Trainer session state; present only while the mode is active.
+#[derive(Debug, Clone, Serialize)]
+#[serde(rename_all = "camelCase")]
+pub struct DepthTrainerTelemetry {
+    pub phase: &'static str,
+    pub set_index: u32,
+    pub set_count: u32,
+    pub stroke_index: u32,
+    pub stroke_count: u32,
+    pub target_depth_mm: f32,
+    pub planned_hold_s: Option<f32>,
+    pub depth_beyond_origin_mm: f32,
+    pub submerged_s: f32,
+    pub submerged_cap_s: Option<f32>,
+    pub rest_remaining_s: f32,
+    pub rest_total_s: f32,
+    pub deadman_held: bool,
+    pub awaiting_deadman: bool,
+    pub emergency: bool,
+    pub emergency_reason: Option<String>,
+    pub early_release: bool,
+    pub cue_soon_s: Option<f32>,
+}
+
+#[derive(Debug, Clone, Serialize)]
+#[serde(rename_all = "camelCase")]
+pub struct DepthHistoryEntry {
+    pub at_ms: u64,
+    pub oscillation_depth_mm: f32,
+    pub hold_depth_mm: f32,
+    pub hold_s: f32,
+    pub early_releases: u32,
+    pub rating: Option<String>,
+}
+
+/// Persisted Depth Trainer progress and next-session targets. Always sent so
+/// the UI can show it (and the settings) before a session starts.
+#[derive(Debug, Clone, Serialize)]
+#[serde(rename_all = "camelCase")]
+pub struct DepthProgressTelemetry {
+    pub breath_hold_s: Option<f32>,
+    pub breath_offset_mm: f32,
+    pub oscillation_depth_mm: f32,
+    pub hold_depth_mm: f32,
+    pub hold_s: f32,
+    pub hold_cap_s: Option<f32>,
+    pub sessions: u32,
+    pub next_advance_in_s: f32,
+    pub suggest_step_back: bool,
+    pub can_start: bool,
+    pub block_reason: Option<String>,
+    pub history: Vec<DepthHistoryEntry>,
+}
+
 #[derive(Debug, Clone, Serialize)]
 #[serde(rename_all = "camelCase")]
 pub struct Telemetry {
@@ -316,6 +370,13 @@ pub struct Telemetry {
     #[serde(skip_serializing_if = "Option::is_none")]
     pub tempo: Option<TempoTelemetry>,
 
+    /// Present only while the Depth Trainer is active.
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub depth_trainer: Option<DepthTrainerTelemetry>,
+
+    /// Depth Trainer progress — always present.
+    pub depth_progress: DepthProgressTelemetry,
+
     /// Included in every frame so the app always has device context.
     pub device_info: DeviceInfo,
 }
@@ -357,6 +418,7 @@ pub fn build_telemetry(st: &AppState, cfg: &Config) -> Telemetry {
         AppMode::Echo => "echo",
         AppMode::Trace => "trace",
         AppMode::Tempo => "tempo",
+        AppMode::DepthTrainer => "depth_trainer",
     };
 
     // Always include HAMP state so the UI can initialise sliders even in idle mode.
@@ -520,6 +582,37 @@ pub fn build_telemetry(st: &AppState, cfg: &Config) -> Telemetry {
         None
     };
 
+    let depth_trainer = if st.depth.active {
+        let d = &st.depth;
+        Some(DepthTrainerTelemetry {
+            phase: d.phase.as_str(),
+            set_index: d.set_index,
+            set_count: d.set_count,
+            stroke_index: d.stroke_index,
+            stroke_count: d.stroke_count,
+            target_depth_mm: d.target_depth_mm,
+            planned_hold_s: d.planned_hold_s,
+            depth_beyond_origin_mm: d.depth_beyond_origin_mm,
+            submerged_s: d.submerged_s,
+            submerged_cap_s: d.submerged_cap_s,
+            rest_remaining_s: d.rest_remaining_s,
+            rest_total_s: d.rest_total_s,
+            deadman_held: d.deadman_held,
+            awaiting_deadman: d.awaiting_deadman,
+            emergency: d.emergency,
+            emergency_reason: d.emergency_reason.clone(),
+            early_release: d.early_release,
+            cue_soon_s: d.cue_soon_s,
+        })
+    } else {
+        None
+    };
+    let depth_progress = {
+        let lim = crate::modes::depth::Limits::from_config(cfg);
+        let ctx = crate::modes::depth::StartCtx::from_state(st);
+        st.depth_progress.view(&lim, &ctx, crate::modes::depth::now_ms())
+    };
+
     let coyote = if st.coyote.connected {
         Some(CoyoteTelemetry {
             connected: st.coyote.connected,
@@ -584,6 +677,8 @@ pub fn build_telemetry(st: &AppState, cfg: &Config) -> Telemetry {
         echo,
         trace,
         tempo,
+        depth_trainer,
+        depth_progress,
         device_info: DeviceInfo {
             firmware_version: env!("CARGO_PKG_VERSION"),
             stroke_mm,
@@ -821,6 +916,26 @@ pub enum Command {
     TempoStart,
     /// Leave tempo mode: stop motion and release servo.
     TempoStop,
+    /// Arm a Depth Trainer session. Ignored unless `depthProgress.canStart`.
+    /// There is deliberately no "advance"/"hold" command: motion is driven only
+    /// by the hardware hand switch.
+    DepthStart,
+    /// Emergency retract to the origin, then leave Depth Trainer.
+    DepthStop,
+    /// Record breath-hold (s) and breathing-safe offset (mm beyond origin).
+    /// Ignored while a session is active.
+    DepthSettings {
+        #[serde(rename = "breathHoldS", alias = "breath_hold_s")]
+        breath_hold_s: f32,
+        #[serde(rename = "breathOffsetMm", alias = "breath_offset_mm")]
+        breath_offset_mm: f32,
+    },
+    /// Rate the finished session (only honoured in the rating phase).
+    DepthRate {
+        rating: crate::modes::DepthRating,
+    },
+    /// User-confirmed step back of the stored comfortable values (idle only).
+    DepthStepBack,
 }
 
 /// Ack sent back on the Ack characteristic after processing a command.
@@ -857,6 +972,50 @@ mod tests {
             let result: Result<Command, _> = serde_json::from_str(json);
             assert!(result.is_ok(), "{json} failed to deserialize: {result:?}");
         }
+    }
+
+    #[test]
+    fn depth_trainer_commands_match_the_web_app() {
+        for json in [
+            r#"{"type":"depth_start"}"#,
+            r#"{"type":"depth_stop"}"#,
+            r#"{"type":"depth_step_back"}"#,
+            r#"{"type":"depth_settings","breathHoldS":30,"breathOffsetMm":4}"#,
+            r#"{"type":"depth_rate","rating":"comfortable"}"#,
+            r#"{"type":"depth_rate","rating":"okay"}"#,
+            r#"{"type":"depth_rate","rating":"too_much"}"#,
+        ] {
+            let r: Result<Command, _> = serde_json::from_str(json);
+            assert!(r.is_ok(), "{json} failed: {r:?}");
+        }
+        match serde_json::from_str::<Command>(r#"{"type":"depth_settings","breathHoldS":30.5,"breathOffsetMm":4}"#).unwrap() {
+            Command::DepthSettings { breath_hold_s, breath_offset_mm } => {
+                assert_eq!(breath_hold_s, 30.5);
+                assert_eq!(breath_offset_mm, 4.0);
+            }
+            o => panic!("wrong variant {o:?}"),
+        }
+        // There must be no command that can hold or advance the rod.
+        for json in [r#"{"type":"depth_button","down":true}"#, r#"{"type":"depth_advance"}"#] {
+            assert!(serde_json::from_str::<Command>(json).is_err(), "{json} must not exist");
+        }
+    }
+
+    #[test]
+    fn depth_telemetry_serialises_with_the_wire_names() {
+        let st = AppState::new("u".into(), 1);
+        let cfg: Config = toml::from_str("[actuator]\nvariant = \"12inch\"\n").unwrap();
+        let t = build_telemetry(&st, &cfg);
+        let v = serde_json::to_value(&t).unwrap();
+        assert!(v.get("depthTrainer").is_none(), "only present while active");
+        let p = &v["depthProgress"];
+        for k in [
+            "breathHoldS", "breathOffsetMm", "oscillationDepthMm", "holdDepthMm", "holdS", "holdCapS",
+            "sessions", "nextAdvanceInS", "suggestStepBack", "canStart", "blockReason", "history",
+        ] {
+            assert!(p.get(k).is_some(), "depthProgress.{k} missing");
+        }
+        assert_eq!(p["canStart"], false);
     }
 
     #[test]

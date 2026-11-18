@@ -81,3 +81,24 @@ export function playFault() {
 export function playMistake() {
   toneSweep(0, 320, 160, 0.2, 'triangle', 0.13)
 }
+
+/**
+ * A soft, low double-tick — "a planned retract / advance is about 2 s away".
+ * Deliberately quieter and gentler than playInputNeeded(): it's a heads-up,
+ * not a request to act (the rod is driven by the hand switch, not this UI).
+ */
+export function playCueSoon() {
+  tone(0, 440, 0.09, 'sine', 0.07)
+  tone(0.12, 440, 0.09, 'sine', 0.07)
+}
+
+/**
+ * Descending three-pulse siren — Depth Trainer emergency retract. Distinct
+ * from playFault() (two flat square pulses) so the user can tell "the trainer
+ * pulled the rod out" from "hardware fault".
+ */
+export function playEmergencyRetract() {
+  toneSweep(0, 880, 440, 0.18, 'sawtooth', 0.14)
+  toneSweep(0.22, 880, 440, 0.18, 'sawtooth', 0.14)
+  toneSweep(0.44, 880, 440, 0.18, 'sawtooth', 0.14)
+}

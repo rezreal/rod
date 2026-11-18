@@ -510,6 +510,13 @@ impl<B: ModbusBus> ModbusDriver<B> {
     /// on each mode's own defaults staying sane.
     async fn depth_scaled(&mut self, pos_mm: f32) -> f32 {
         let st = self.state.read().await;
+        // Depth Trainer works in exact mm beyond the calibrated origin and
+        // enforces its own ceiling; rescaling would distort both the depth and
+        // (worse) the safety retract target. `depth.driving` stays set until the
+        // final retract has finished, even if the mode already flipped to Idle.
+        if st.depth.driving {
+            return pos_mm.min(self.stroke_mm - HARD_STOP_MARGIN_MM);
+        }
         let ceiling = match st.mode {
             AppMode::Ramp
             | AppMode::Hdsp
@@ -939,6 +946,7 @@ impl<B: ModbusBus> ModbusDriver<B> {
             st.alarm_minor = status.dss1.contains(Dss1::ALML);
             st.alarm_major = status.dss1.contains(Dss1::ALMH);
             st.hand_switch = status.hand_switch();
+            st.status_seq = st.status_seq.wrapping_add(1);
         }
 
         // HDSP play-state notification on a moving → reached transition.
@@ -1357,6 +1365,24 @@ mod tests {
         let (_addr, regs) = &d.bus.reg_writes[0];
         let pcmd = ((regs[0] as u32) << 16 | regs[1] as u32) as i32;
         assert_eq!(pcmd, ((300.0 - HARD_STOP_MARGIN_MM) * 100.0) as i32);
+    }
+
+    #[tokio::test]
+    async fn depth_trainer_moves_are_exact_not_rescaled_but_still_stop_margin_clamped() {
+        let (mut d, state) = driver(FakeBus::default());
+        {
+            let mut st = state.write().await;
+            st.comfortable_depth_mm = 100.0; // would rescale 50 mm → 16.7 mm
+            st.max_depth_mm = 100.0;
+        }
+        // Without the Depth Trainer flag a mode move is rescaled …
+        assert!(d.depth_scaled(50.0).await < 20.0);
+        // … while the trainer's moves (including its retract after the mode
+        // flipped to Idle) are passed through exactly.
+        state.write().await.depth.driving = true;
+        assert_eq!(d.depth_scaled(50.0).await, 50.0);
+        // The far hard-stop margin still applies.
+        assert_eq!(d.depth_scaled(1000.0).await, 300.0 - HARD_STOP_MARGIN_MM);
     }
 
     #[tokio::test]

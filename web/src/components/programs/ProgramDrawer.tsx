@@ -15,6 +15,7 @@ import { TideControls } from './TideControls'
 import { EchoControls } from './EchoControls'
 import { TraceControls } from './TraceControls'
 import { TempoControls } from './TempoControls'
+import { DepthTrainerControls } from './DepthTrainerControls'
 
 const TITLES = {
   hamp:  'Oscillation',
@@ -33,6 +34,7 @@ const TITLES = {
   echo: 'Echo',
   trace: 'Trace',
   tempo: 'Tempo',
+  depth_trainer: 'Depth Trainer',
 }
 
 export function ProgramDrawer() {
@@ -60,6 +62,7 @@ export function ProgramDrawer() {
       {activeProgram === 'echo' && <EchoControls />}
       {activeProgram === 'trace' && <TraceControls />}
       {activeProgram === 'tempo' && <TempoControls />}
+      {activeProgram === 'depth_trainer' && <DepthTrainerControls />}
     </div>
   )
 }
