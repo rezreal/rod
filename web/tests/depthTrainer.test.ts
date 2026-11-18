@@ -16,6 +16,7 @@ const live: DepthTrainerState = {
   targetDepthMm: 5, plannedHoldS: 5, depthBeyondOriginMm: 4.9, submergedS: 3.2, submergedCapS: 18,
   restRemainingS: 0, restTotalS: 0, deadmanHeld: true, awaitingDeadman: false,
   emergency: false, emergencyReason: null, earlyRelease: false, cueSoonS: 1.5,
+  warmupRemainingS: null, awaitingWarmupConfirm: false, warmupCanExtend: true,
 }
 
 function telemetry(extra: Partial<Telemetry>): Telemetry {
@@ -51,6 +52,18 @@ describe('depth trainer store mapping', () => {
     const after = useDeviceStore.getState().status
     expect(after).not.toBe(before)
     expect(after.depthTrainer?.emergency).toBe(true)
+  })
+
+  it('carries the warm-up fields and detects changes in them', () => {
+    const st = useDeviceStore.getState()
+    const warm = { ...live, phase: 'warmup' as const, warmupRemainingS: 90 }
+    st.setTelemetry(telemetry({ mode: 'depth_trainer', depthProgress: progress, depthTrainer: warm }))
+    const before = useDeviceStore.getState().status
+    expect(before.depthTrainer?.warmupRemainingS).toBe(90)
+    st.setTelemetry(telemetry({ mode: 'depth_trainer', depthProgress: progress, depthTrainer: { ...warm, warmupRemainingS: 0, awaitingWarmupConfirm: true, warmupCanExtend: false } }))
+    const after = useDeviceStore.getState().status
+    expect(after).not.toBe(before)
+    expect(after.depthTrainer).toMatchObject({ warmupRemainingS: 0, awaitingWarmupConfirm: true, warmupCanExtend: false })
   })
 
   it('clears depth fields when the mode state disappears', () => {
@@ -94,8 +107,10 @@ describe('depth trainer helpers', () => {
       { type: 'depth_settings', breathHoldS: 30, breathOffsetMm: 8 },
       { type: 'depth_rate', rating: 'too_much' },
       { type: 'depth_step_back' },
+      { type: 'depth_warmup_continue' },
+      { type: 'depth_warmup_extend' },
     ]
     expect(JSON.parse(JSON.stringify(cmds[2]))).toEqual({ type: 'depth_settings', breathHoldS: 30, breathOffsetMm: 8 })
-    expect(cmds.map((c) => c.type)).toEqual(['depth_start', 'depth_stop', 'depth_settings', 'depth_rate', 'depth_step_back'])
+    expect(cmds.map((c) => c.type)).toEqual(['depth_start', 'depth_stop', 'depth_settings', 'depth_rate', 'depth_step_back', 'depth_warmup_continue', 'depth_warmup_extend'])
   })
 })

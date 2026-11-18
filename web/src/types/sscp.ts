@@ -263,6 +263,12 @@ export interface DepthTrainerState {
   earlyRelease: boolean
   /** Seconds to the next advance / planned retract when <= 3 s, else null. */
   cueSoonS: number | null
+  /** Timed warm-up time left (s); 0 at the confirm gate; null outside the warm-up. */
+  warmupRemainingS: number | null
+  /** Warm-up time is up and the rod is parked: waiting for Continue / +1 min. */
+  awaitingWarmupConfirm: boolean
+  /** The warm-up may still be extended (up to 10 min total). */
+  warmupCanExtend: boolean
 }
 
 export interface HspState {
@@ -486,6 +492,12 @@ export interface DepthRateCommand  { type: 'depth_rate'; rating: DepthRating }
 /** User-confirmed step back in progression (idle only). */
 export interface DepthStepBackCommand { type: 'depth_step_back' }
 
+/** Warm-up confirm gate: proceed to the main session. Only honoured at the gate;
+ *  the hand switch must then be held again (3 s countdown first). */
+export interface DepthWarmupContinueCommand { type: 'depth_warmup_continue' }
+/** Warm-up confirm gate: warm up 1 min more (up to 10 min total). Only honoured at the gate. */
+export interface DepthWarmupExtendCommand   { type: 'depth_warmup_extend' }
+
 /** Set DG-LAB Coyote per-channel strength (bridge clamps to the safety cap). */
 export interface CoyoteSetStrengthCommand { type: 'coyote_set_strength'; a: number; b: number }
 /** Make the Coyote follow the rod's motion intensity (or stop following). */
@@ -596,6 +608,8 @@ export type Command =
   | DepthSettingsCommand
   | DepthRateCommand
   | DepthStepBackCommand
+  | DepthWarmupContinueCommand
+  | DepthWarmupExtendCommand
 
 export interface HspPoint {
   timeMs: number

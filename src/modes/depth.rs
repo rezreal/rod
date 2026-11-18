@@ -64,6 +64,8 @@ pub const MIN_BREATH_HOLD_S: f32 = 5.0;
 pub const MAX_BREATH_HOLD_S: f32 = 180.0;
 pub const MAX_BREATH_OFFSET_MM: f32 = 100.0;
 
+/// Smallest breathing-safe offset (mm) that leaves room for the timed warm-up.
+const MIN_WARM_STROKE_MM: f32 = 2.0;
 const MAX_SPEED_MM_S: f32 = 8.0;
 const MAX_RETURN_SPEED_MM_S: f32 = 20.0;
 const MAX_RETRACT_SPEED_MM_S: f32 = 40.0;
@@ -117,6 +119,9 @@ pub struct Limits {
     pub start_hold_mm: f32,
     pub start_hold_s: f32,
     pub warmup_strokes: u32,
+    pub warmup_s: f32,
+    pub warmup_extend_s: f32,
+    pub warmup_max_s: f32,
     pub osc_sets: u32,
     pub strokes_per_set: u32,
     pub hold_sets: u32,
@@ -187,6 +192,10 @@ impl Limits {
             start_hold_mm: fin(c.start_hold_depth_mm, MIN_DEPTH_MM, 50.0, 5.0),
             start_hold_s: fin(c.start_hold_s, MIN_DWELL_S, ABS_MAX_HOLD_S, 5.0),
             warmup_strokes: c.warmup_strokes.clamp(1, 10),
+            warmup_s: fin(c.warmup_s, 30.0, 600.0, 120.0),
+            warmup_extend_s: fin(c.warmup_extend_s, 15.0, 300.0, 60.0),
+            warmup_max_s: fin(c.warmup_max_s, 30.0, 900.0, 600.0)
+                .max(fin(c.warmup_s, 30.0, 600.0, 120.0)),
             osc_sets: c.oscillation_sets.clamp(1, 6),
             strokes_per_set: c.strokes_per_set.clamp(1, 12),
             hold_sets: c.hold_sets.clamp(1, 6),
@@ -255,7 +264,11 @@ impl Limits {
 
 #[derive(Debug, Clone, Copy, PartialEq)]
 pub enum BlockKind {
+    /// Short shallow strokes (used when there is no breathing-safe room).
     Warmup,
+    /// Timed gentle strokes inside the breathing-safe offset; `dwell_s` is the
+    /// duration. Never submerges, so no breath budget or rest applies.
+    WarmTimed,
     Oscillation,
     Hold,
     Cooldown,
@@ -360,14 +373,26 @@ pub fn plan_session(
     }
     let dwell = targets.hold_s.min(budget).max(MIN_DWELL_S);
     let mut blocks = Vec::new();
-    blocks.push(Block {
-        kind: BlockKind::Warmup,
-        depth_mm: (targets.osc_depth_mm * 0.5).max(MIN_DEPTH_MM),
-        strokes: lim.warmup_strokes,
-        dwell_s: 0.0,
-        set_idx: 1,
-        set_count: 1,
-    });
+    if offset_mm >= MIN_WARM_STROKE_MM {
+        // Gentle timed warm-up that stays above the breathing-safe offset.
+        blocks.push(Block {
+            kind: BlockKind::WarmTimed,
+            depth_mm: offset_mm.min((targets.osc_depth_mm * 0.5).max(MIN_DEPTH_MM)),
+            strokes: 0,
+            dwell_s: lim.warmup_s,
+            set_idx: 1,
+            set_count: 1,
+        });
+    } else {
+        blocks.push(Block {
+            kind: BlockKind::Warmup,
+            depth_mm: (targets.osc_depth_mm * 0.5).max(MIN_DEPTH_MM),
+            strokes: lim.warmup_strokes,
+            dwell_s: 0.0,
+            set_idx: 1,
+            set_count: 1,
+        });
+    }
     for i in 0..lim.osc_sets {
         blocks.push(Block {
             kind: BlockKind::Oscillation,
@@ -816,6 +841,16 @@ pub struct Sample {
 enum Step {
     /// At/outside the origin: resting, or waiting for the switch.
     Idle,
+    /// Timed warm-up: gentle stroke outward (to the warm-up depth).
+    WarmOut {
+        deadline: f64,
+    },
+    /// Timed warm-up: gentle stroke back to the origin.
+    WarmBack {
+        deadline: f64,
+    },
+    /// Warm-up finished; rod at the origin, waiting for Continue / + more.
+    WarmGate,
     /// Switch held, counting down before the next advance.
     Ready {
         until: f64,
@@ -866,6 +901,12 @@ pub struct Machine {
     sub_block_s: f32,
     stroke_idx: u32,
     leg_target: f32,
+    /// End of the current timed warm-up block (machine time).
+    warm_until: f64,
+    /// Depth (mm) of the timed warm-up strokes, reused by extensions.
+    warm_depth: f32,
+    /// Sum of all warm-up time started so far, extensions included (s).
+    warm_total_s: f32,
     /// A normal end-of-block return was upgraded to retract speed because the
     /// switch was released while it was still under way.
     return_fast: bool,
@@ -905,6 +946,9 @@ impl Machine {
             sub_block_s: 0.0,
             stroke_idx: 0,
             leg_target: origin,
+            warm_until: t0,
+            warm_depth: 0.0,
+            warm_total_s: 0.0,
             return_fast: false,
             early_releases: 0,
             emergency: None,
@@ -952,6 +996,8 @@ impl Machine {
                 | Step::Dwell { .. }
                 | Step::Back { .. }
                 | Step::Breath { .. }
+                | Step::WarmOut { .. }
+                | Step::WarmBack { .. }
         )
     }
 
@@ -1019,7 +1065,7 @@ impl Machine {
                 };
                 Vec::new()
             }
-            Step::Idle | Step::Ready { .. } if self.depth_beyond <= POS_TOL_MM => {
+            Step::Idle | Step::Ready { .. } | Step::WarmGate if self.depth_beyond <= POS_TOL_MM => {
                 self.step = Step::Done;
                 self.phase = DepthPhase::Ended;
                 Vec::new()
@@ -1108,13 +1154,71 @@ impl Machine {
         self.sub_block_s = 0.0;
         self.stroke_idx = 0;
         self.phase = match b.kind {
-            BlockKind::Warmup => DepthPhase::Warmup,
+            BlockKind::Warmup | BlockKind::WarmTimed => DepthPhase::Warmup,
             BlockKind::Oscillation => DepthPhase::Oscillation,
             BlockKind::Hold => DepthPhase::Hold,
             BlockKind::Cooldown => DepthPhase::Cooldown,
         };
+        if b.kind == BlockKind::WarmTimed {
+            self.warm_until = t + b.dwell_s as f64;
+            self.warm_depth = b.depth_mm;
+            self.warm_total_s += b.dwell_s;
+            self.cur = Some(b);
+            return self.begin_warm_out(t, pos);
+        }
         self.cur = Some(b);
         self.begin_out(t, pos)
+    }
+
+    fn begin_warm_out(&mut self, t: f64, pos: f32) -> Vec<Action> {
+        let target = self.origin + self.warm_depth;
+        self.leg_target = target;
+        let d = (target - pos).abs();
+        self.step = Step::WarmOut {
+            deadline: t + (2.0 * d / self.lim.speed + 3.0) as f64,
+        };
+        vec![self.mv(target, self.lim.speed, self.lim.accel_g)]
+    }
+
+    fn begin_warm_back(&mut self, t: f64, pos: f32) -> Vec<Action> {
+        self.leg_target = self.origin;
+        let d = (pos - self.origin).abs();
+        self.step = Step::WarmBack {
+            deadline: t + (2.0 * d / self.lim.speed + 3.0) as f64,
+        };
+        vec![self.mv(self.origin, self.lim.speed, self.lim.accel_g)]
+    }
+
+    /// The user is ready for the main blocks.
+    pub fn warmup_continue(&mut self) -> bool {
+        if matches!(self.step, Step::WarmGate) {
+            self.step = Step::Idle;
+            true
+        } else {
+            false
+        }
+    }
+
+    /// Add another warm-up period (the next advance still needs the switch held
+    /// and the usual countdown). Refused past the total warm-up ceiling.
+    pub fn warmup_extend(&mut self) -> bool {
+        if !matches!(self.step, Step::WarmGate) || !self.can_extend_warmup() {
+            return false;
+        }
+        self.blocks.push_front(Block {
+            kind: BlockKind::WarmTimed,
+            depth_mm: self.warm_depth,
+            strokes: 0,
+            dwell_s: self.lim.warmup_extend_s,
+            set_idx: 1,
+            set_count: 1,
+        });
+        self.step = Step::Idle;
+        true
+    }
+
+    fn can_extend_warmup(&self) -> bool {
+        self.warm_total_s + self.lim.warmup_extend_s <= self.lim.warmup_max_s + 1e-3
     }
 
     fn begin_out(&mut self, t: f64, pos: f32) -> Vec<Action> {
@@ -1295,6 +1399,40 @@ impl Machine {
                 }
             }
 
+            Step::WarmOut { deadline } => {
+                if Self::reached(pos, self.leg_target) {
+                    self.begin_warm_back(t, pos)
+                } else if t >= deadline {
+                    self.emergency(t, "move timeout", true)
+                } else {
+                    Vec::new()
+                }
+            }
+
+            Step::WarmBack { deadline } => {
+                if Self::reached(pos, self.origin) {
+                    if t >= self.warm_until {
+                        // Warm-up time is up: park at the origin and wait for the user.
+                        self.cur = None;
+                        self.rest_total = 0.0;
+                        self.step = Step::WarmGate;
+                        self.phase = DepthPhase::Warmup;
+                        Vec::new()
+                    } else {
+                        self.begin_warm_out(t, pos)
+                    }
+                } else if t >= deadline {
+                    self.emergency(t, "move timeout", true)
+                } else {
+                    Vec::new()
+                }
+            }
+
+            Step::WarmGate => {
+                self.phase = DepthPhase::Warmup;
+                Vec::new()
+            }
+
             Step::Return { deadline } => {
                 if pos <= self.origin + POS_TOL_MM {
                     self.begin_rest(t);
@@ -1329,8 +1467,22 @@ impl Machine {
                 } else {
                     // First deadman release: abort this block, rest, carry on.
                     self.emergency = None;
-                    self.cur = None;
-                    self.rest_total = self.lim.rest_s(self.sub_block_s);
+                    match self.cur.take() {
+                        Some(b) if b.kind == BlockKind::WarmTimed => {
+                            // The warm-up stays inside the breathing-safe offset,
+                            // so no rest is needed — but it must still be done:
+                            // put back what was left of it.
+                            let left =
+                                (self.warm_until - t).max(self.lim.warmup_extend_s as f64 * 0.25);
+                            self.warm_total_s -= (b.dwell_s - left as f32).max(0.0);
+                            self.blocks.push_front(Block {
+                                dwell_s: left as f32,
+                                ..b
+                            });
+                            self.rest_total = 0.0;
+                        }
+                        _ => self.rest_total = self.lim.rest_s(self.sub_block_s),
+                    }
                     self.begin_rest(t);
                 }
                 Vec::new()
@@ -1368,6 +1520,21 @@ impl Machine {
         rt.emergency_reason = self.emergency.clone().or_else(|| self.end_reason.clone());
         rt.early_release = self.early_releases > 0;
         rt.cue_soon_s = self.cue;
+        let gate = matches!(self.step, Step::WarmGate);
+        let warming = matches!(self.step, Step::WarmOut { .. } | Step::WarmBack { .. })
+            || self
+                .cur
+                .as_ref()
+                .is_some_and(|b| b.kind == BlockKind::WarmTimed);
+        rt.warmup_remaining_s = if warming {
+            Some((self.warm_until - t).max(0.0) as f32)
+        } else if gate {
+            Some(0.0)
+        } else {
+            None
+        };
+        rt.awaiting_warmup_confirm = gate;
+        rt.warmup_can_extend = gate && self.can_extend_warmup();
     }
 }
 
@@ -1547,6 +1714,18 @@ impl DepthTask {
                     .unwrap_or(false);
                 if ready {
                     self.finish(session, Some(r)).await;
+                }
+            }
+
+            DepthControl::WarmupContinue => {
+                if let Some(s) = session.as_mut() {
+                    s.machine.warmup_continue();
+                }
+            }
+
+            DepthControl::WarmupExtend => {
+                if let Some(s) = session.as_mut() {
+                    s.machine.warmup_extend();
                 }
             }
 
@@ -2091,6 +2270,7 @@ mod tests {
         while t < until {
             t += DT;
             sim.step(DT as f32);
+            m.warmup_continue(); // no-op unless waiting at the warm-up gate
             let acts = m.tick(
                 t,
                 &Sample {
@@ -2211,6 +2391,202 @@ mod tests {
             },
         );
         assert!(again.is_empty());
+    }
+
+    // ── timed warm-up ──
+
+    fn tick_n(m: &mut Machine, sim: &mut Sim, t: &mut f64, secs: f64, held: bool) {
+        let end = *t + secs;
+        while *t < end {
+            *t += DT;
+            sim.step(DT as f32);
+            let acts = m.tick(
+                *t,
+                &Sample {
+                    position_mm: sim.pos,
+                    held,
+                    fault: None,
+                },
+            );
+            sim.apply(*t, &acts);
+        }
+    }
+
+    #[test]
+    fn timed_warmup_is_planned_only_when_the_offset_leaves_room() {
+        let l = lim();
+        let cap = l.cap_s(30.0);
+        let (with_room, _) = plan_session(&l, &targets(), cap, 4.0).unwrap();
+        assert_eq!(with_room[0].kind, BlockKind::WarmTimed);
+        assert_eq!(with_room[0].dwell_s, l.warmup_s);
+        assert!(
+            with_room[0].depth_mm <= 4.0,
+            "warm-up stays within the offset"
+        );
+        let (no_room, _) = plan_session(&l, &targets(), cap, 0.0).unwrap();
+        assert_eq!(
+            no_room[0].kind,
+            BlockKind::Warmup,
+            "falls back to the short strokes"
+        );
+        let (tiny, _) = plan_session(&l, &targets(), cap, 1.0).unwrap();
+        assert_eq!(tiny[0].kind, BlockKind::Warmup);
+        // never deeper than half the working depth even with a big offset
+        let (big, _) = plan_session(&l, &targets(), cap, 30.0).unwrap();
+        assert_eq!(big[0].kind, BlockKind::WarmTimed);
+        assert!(big[0].depth_mm <= 5.0 + 1e-3);
+    }
+
+    #[test]
+    fn timed_warmup_stays_inside_the_offset_then_waits_at_the_gate() {
+        let (mut m, _) = machine(4.0, 30.0);
+        let l = lim();
+        let mut sim = Sim::new(ORIGIN);
+        let mut t = 0.0;
+        let mut max_pos = ORIGIN;
+        let mut max_sub = 0.0f32;
+        // countdown + full warm-up + a little slack
+        let end = 3.0 + l.warmup_s as f64 + 40.0;
+        while t < end && !matches!(m.step, Step::WarmGate) {
+            tick_n(&mut m, &mut sim, &mut t, DT, true);
+            max_pos = max_pos.max(sim.pos);
+            max_sub = max_sub.max(m.sub_block_s);
+        }
+        assert!(
+            matches!(m.step, Step::WarmGate),
+            "warm-up should end at the gate"
+        );
+        assert!(t >= l.warmup_s as f64, "ran the whole warm-up ({t} s)");
+        assert!(
+            max_pos <= ORIGIN + 4.0 + POS_TOL_MM,
+            "stayed inside the offset: {max_pos}"
+        );
+        assert_eq!(max_sub, 0.0, "never submerged → no breath budget used");
+        assert!(
+            (sim.pos - ORIGIN).abs() <= POS_TOL_MM,
+            "parked at the origin"
+        );
+        // waiting at the gate: nothing moves even with the switch held
+        let moves = sim.moves.len();
+        tick_n(&mut m, &mut sim, &mut t, 30.0, true);
+        assert_eq!(sim.moves.len(), moves, "no motion until the user confirms");
+        let mut rt = DepthRuntime::default();
+        m.snapshot(t, &mut rt);
+        assert!(rt.awaiting_warmup_confirm && rt.warmup_can_extend);
+        assert_eq!(rt.warmup_remaining_s, Some(0.0));
+        assert_eq!(rt.phase, DepthPhase::Warmup);
+    }
+
+    #[test]
+    fn continue_starts_the_main_blocks_after_only_the_normal_countdown() {
+        let (mut m, _) = machine(4.0, 30.0);
+        let l = lim();
+        let mut sim = Sim::new(ORIGIN);
+        let mut t = 0.0;
+        while !matches!(m.step, Step::WarmGate) {
+            tick_n(&mut m, &mut sim, &mut t, DT, true);
+        }
+        assert!(m.warmup_continue());
+        assert!(!m.warmup_continue(), "second continue is a no-op");
+        let moves = sim.moves.len();
+        let t0 = t;
+        while sim.moves.len() == moves && t < t0 + 20.0 {
+            tick_n(&mut m, &mut sim, &mut t, DT, true);
+        }
+        let waited = t - t0;
+        assert!(
+            waited >= l.ready_countdown_s as f64 - 0.2,
+            "countdown first ({waited})"
+        );
+        assert!(
+            waited < 6.0,
+            "no rest after a warm-up that never submerged ({waited})"
+        );
+        assert_eq!(m.snapshot_phase(), DepthPhase::Oscillation);
+    }
+
+    #[test]
+    fn extend_adds_warmup_time_needs_the_switch_and_is_capped() {
+        let (mut m, _) = machine(4.0, 30.0);
+        let l = lim();
+        let mut sim = Sim::new(ORIGIN);
+        let mut t = 0.0;
+        let mut extensions = 0;
+        loop {
+            while !matches!(m.step, Step::WarmGate) {
+                tick_n(&mut m, &mut sim, &mut t, DT, true);
+            }
+            if !m.warmup_extend() {
+                break;
+            }
+            extensions += 1;
+            // not held → nothing happens (needs the switch and countdown again)
+            let moves = sim.moves.len();
+            tick_n(&mut m, &mut sim, &mut t, 5.0, false);
+            assert_eq!(sim.moves.len(), moves, "extension still needs the deadman");
+            let started = t;
+            while !matches!(m.step, Step::WarmGate) {
+                tick_n(&mut m, &mut sim, &mut t, DT, true);
+            }
+            assert!(
+                t - started >= l.warmup_extend_s as f64,
+                "extension ran its time"
+            );
+            assert!(extensions < 50);
+        }
+        let total = l.warmup_s + extensions as f32 * l.warmup_extend_s;
+        assert!(
+            total <= l.warmup_max_s + 1e-3,
+            "total {total} over the ceiling"
+        );
+        assert!(
+            total + l.warmup_extend_s > l.warmup_max_s,
+            "stopped only at the ceiling"
+        );
+        let mut rt = DepthRuntime::default();
+        m.snapshot(t, &mut rt);
+        assert!(!rt.warmup_can_extend);
+    }
+
+    #[test]
+    fn releasing_during_the_warmup_retracts_and_the_warmup_is_not_skipped() {
+        let (mut m, _) = machine(4.0, 30.0);
+        let mut sim = Sim::new(ORIGIN);
+        let mut t = 0.0;
+        // start the warm-up and release mid-stroke
+        while !matches!(m.step, Step::WarmOut { .. } | Step::WarmBack { .. }) {
+            tick_n(&mut m, &mut sim, &mut t, DT, true);
+        }
+        tick_n(&mut m, &mut sim, &mut t, 1.0, false);
+        assert!(m.outcome().early_releases == 1);
+        assert!((sim.pos - ORIGIN).abs() <= 4.5);
+        // re-hold: the warm-up resumes (no rest needed) and ends at the gate, not in the main blocks
+        let mut got_gate = false;
+        let end = t + 200.0;
+        while t < end {
+            tick_n(&mut m, &mut sim, &mut t, DT, true);
+            if matches!(m.step, Step::WarmGate) {
+                got_gate = true;
+                break;
+            }
+            assert!(
+                m.snapshot_phase() != DepthPhase::Oscillation,
+                "must not skip the warm-up"
+            );
+        }
+        assert!(got_gate, "warm-up resumed and reached the gate");
+    }
+
+    #[test]
+    fn stop_at_the_warmup_gate_exits_immediately() {
+        let (mut m, _) = machine(4.0, 30.0);
+        let mut sim = Sim::new(ORIGIN);
+        let mut t = 0.0;
+        while !matches!(m.step, Step::WarmGate) {
+            tick_n(&mut m, &mut sim, &mut t, DT, true);
+        }
+        assert!(m.stop(t).is_empty());
+        assert!(m.is_done());
     }
 
     #[test]
@@ -2375,6 +2751,7 @@ mod tests {
             for _ in 0..200_000 {
                 t += DT;
                 sim.step(DT as f32);
+                m.warmup_continue();
                 let before = sim.moves.len();
                 let acts = m.tick(
                     t,

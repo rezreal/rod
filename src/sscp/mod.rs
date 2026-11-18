@@ -227,6 +227,9 @@ pub struct DepthTrainerTelemetry {
     pub emergency_reason: Option<String>,
     pub early_release: bool,
     pub cue_soon_s: Option<f32>,
+    pub warmup_remaining_s: Option<f32>,
+    pub awaiting_warmup_confirm: bool,
+    pub warmup_can_extend: bool,
 }
 
 #[derive(Debug, Clone, Serialize)]
@@ -603,6 +606,9 @@ pub fn build_telemetry(st: &AppState, cfg: &Config) -> Telemetry {
             emergency_reason: d.emergency_reason.clone(),
             early_release: d.early_release,
             cue_soon_s: d.cue_soon_s,
+            warmup_remaining_s: d.warmup_remaining_s,
+            awaiting_warmup_confirm: d.awaiting_warmup_confirm,
+            warmup_can_extend: d.warmup_can_extend,
         })
     } else {
         None
@@ -936,6 +942,10 @@ pub enum Command {
     },
     /// User-confirmed step back of the stored comfortable values (idle only).
     DepthStepBack,
+    /// Timed warm-up is done; proceed to the main blocks.
+    DepthWarmupContinue,
+    /// Add another warm-up period.
+    DepthWarmupExtend,
 }
 
 /// Ack sent back on the Ack characteristic after processing a command.
@@ -980,6 +990,8 @@ mod tests {
             r#"{"type":"depth_start"}"#,
             r#"{"type":"depth_stop"}"#,
             r#"{"type":"depth_step_back"}"#,
+            r#"{"type":"depth_warmup_continue"}"#,
+            r#"{"type":"depth_warmup_extend"}"#,
             r#"{"type":"depth_settings","breathHoldS":30,"breathOffsetMm":4}"#,
             r#"{"type":"depth_rate","rating":"comfortable"}"#,
             r#"{"type":"depth_rate","rating":"okay"}"#,

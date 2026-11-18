@@ -293,4 +293,8 @@ pub enum DepthControl {
     Rate(DepthRating),
     /// User-confirmed step back of the stored comfortable values (idle only).
     StepBack,
+    /// The timed warm-up is done and the user is ready for the main blocks.
+    WarmupContinue,
+    /// Add another warm-up period (the next advance still needs the switch held).
+    WarmupExtend,
 }

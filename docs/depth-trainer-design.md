@@ -210,3 +210,26 @@ Mode label in `status.mode` is `depth_trainer`.
   from software.
 - Retract completion is judged from sensed position; the two-leg approach
   (fast, then the last 5 mm slow) pauses briefly at the junction.
+
+## Timed warm-up (added after review)
+
+Each session starts with a warm-up so the work-piece can self-lubricate.
+Lubrication can't be sensed, so it is **timed, then the user confirms**:
+
+- If the breathing-safe offset is ≥ 2 mm: gentle continuous strokes between the
+  origin and `min(offset, max(½ × oscillation depth, 2 mm))` at the advance speed,
+  for `warmup_s` (default 120 s). These stay above the offset, so they never
+  count as submerged and need no breath budget or rest. Releasing the switch
+  retracts as usual and the warm-up resumes (it is never skipped).
+- If the offset is < 2 mm there's no breathing room: the old short shallow
+  stroke warm-up runs (3 strokes, normal budget/rest rules) and there is no gate.
+- When the time is up the rod parks at the origin (phase `warmup`,
+  `awaitingWarmupConfirm`) and nothing moves until the user taps **Continue** or
+  **+1 min more** (`warmup_extend_s`, up to `warmup_max_s` = 10 min total).
+  Each extension and the main blocks still need the switch held plus the normal
+  3 s countdown.
+
+Wire additions: commands `{type:'depth_warmup_continue'}` and
+`{type:'depth_warmup_extend'}` (only honoured at the gate); `depthTrainer` gains
+`warmupRemainingS: number|null` (time left; `0` at the gate; `null` outside the
+warm-up), `awaitingWarmupConfirm: boolean`, `warmupCanExtend: boolean`.

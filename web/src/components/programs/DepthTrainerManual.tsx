@@ -63,10 +63,24 @@ export function DepthTrainerManual() {
         again.
       </Section>
 
+      <Section title="Warm-up">
+        Every session starts with a <Em>timed warm-up</Em> (default 2 min) so the
+        work-piece can lubricate. It uses gentle strokes that stay inside the
+        breathing-safe offset, so no breath limit or rest applies. When the time is up
+        the rod parks and waits: <Em>you</Em> decide when you're ready, with{' '}
+        <Em>Continue</Em>, or <Em>+1 min more</Em> up to 10 min in total. After either
+        you must hold the hand switch again, and a 3 s countdown runs before anything
+        moves. If the offset is under 2 mm there is no breath-safe room, so the short
+        3-stroke warm-up runs instead (normal budget and rest rules) and there is no
+        confirm step.
+      </Section>
+
       <Section title="Session structure">
-        Warm-up (3 strokes to half the oscillation depth) → oscillation sets → hold sets
-        (3 holds, rest between) → cool-down (2 shallow strokes, rod parked at the origin) →
-        you rate the session: <Em>comfortable</Em>, <Em>okay</Em> or <Em>too much</Em>.
+        Warm-up → oscillation sets → hold sets (3 holds, rest between) → cool-down (2
+        shallow strokes, rod parked at the origin) → you rate the session:{' '}
+        <Em>comfortable</Em>, <Em>okay</Em> or <Em>too much</Em>. A session takes roughly
+        6–7 minutes with the default warm-up, longer as depth and hold time grow, plus
+        any extra warm-up you add.
       </Section>
 
       <Section title="Progression">

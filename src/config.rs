@@ -464,6 +464,17 @@ pub struct DepthTrainer {
     pub start_hold_s: f32,
     #[serde(default = "dt_warmup")]
     pub warmup_strokes: u32,
+    /// Timed warm-up (s) at the start of each session, in gentle strokes within
+    /// the breathing-safe offset, so the work-piece can self-lubricate. Applies
+    /// when the offset is at least 2 mm; otherwise the short stroke warm-up runs.
+    #[serde(default = "dt_warmup_s")]
+    pub warmup_s: f32,
+    /// Extra warm-up (s) added each time the user taps "+ more".
+    #[serde(default = "dt_warmup_extend_s")]
+    pub warmup_extend_s: f32,
+    /// Ceiling (s) on the total warm-up including extensions.
+    #[serde(default = "dt_warmup_max_s")]
+    pub warmup_max_s: f32,
     #[serde(default = "dt_osc_sets")]
     pub oscillation_sets: u32,
     #[serde(default = "dt_strokes")]
@@ -503,6 +514,9 @@ impl Default for DepthTrainer {
             start_hold_depth_mm: dt_start_hold_depth(),
             start_hold_s: dt_start_hold_s(),
             warmup_strokes: dt_warmup(),
+            warmup_s: dt_warmup_s(),
+            warmup_extend_s: dt_warmup_extend_s(),
+            warmup_max_s: dt_warmup_max_s(),
             oscillation_sets: dt_osc_sets(),
             strokes_per_set: dt_strokes(),
             hold_sets: dt_hold_sets(),
@@ -533,6 +547,9 @@ fn dt_start_osc() -> f32 { 10.0 }
 fn dt_start_hold_depth() -> f32 { 5.0 }
 fn dt_start_hold_s() -> f32 { 5.0 }
 fn dt_warmup() -> u32 { 3 }
+fn dt_warmup_s() -> f32 { 120.0 }
+fn dt_warmup_extend_s() -> f32 { 60.0 }
+fn dt_warmup_max_s() -> f32 { 600.0 }
 fn dt_osc_sets() -> u32 { 3 }
 fn dt_strokes() -> u32 { 6 }
 fn dt_hold_sets() -> u32 { 3 }

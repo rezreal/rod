@@ -237,6 +237,46 @@ function ActiveView({ live, progress }: { live: DepthTrainerState | undefined; p
         </div>
       )}
 
+      {live.awaitingWarmupConfirm && !live.emergency && (
+        <div className="flex flex-col gap-3 rounded-2xl bg-purple-950/50 border border-purple-400/50 p-4">
+          <div className="text-sm font-semibold text-purple-100">Warm-up done. Ready for the main session?</div>
+          <p className="text-xs text-purple-200/80 leading-snug">
+            The rod is parked at the origin and will not move until you choose. After
+            Continue or +1 min more you must hold the hand switch again; a 3 s countdown
+            runs first.
+          </p>
+          <div className="grid grid-cols-2 gap-2">
+            <button
+              onClick={() => send({ type: 'depth_warmup_continue' })}
+              className="py-3 rounded-xl text-sm font-semibold bg-purple-600 hover:bg-purple-500 text-white transition-colors"
+            >
+              Continue
+            </button>
+            <button
+              onClick={() => send({ type: 'depth_warmup_extend' })}
+              disabled={!live.warmupCanExtend}
+              className="py-3 rounded-xl text-sm font-semibold border border-purple-400/60 text-purple-100 hover:bg-purple-900/60 disabled:opacity-40 disabled:hover:bg-transparent transition-colors"
+            >
+              +1 min more
+            </button>
+          </div>
+          {!live.warmupCanExtend && (
+            <p className="text-[11px] text-slate-400">Maximum warm-up (10 min) reached.</p>
+          )}
+        </div>
+      )}
+
+      {phase === 'warmup' && live.warmupRemainingS !== null && live.warmupRemainingS > 0 && (
+        <div className="flex flex-col items-center gap-1 rounded-2xl bg-slate-800/60 border border-slate-700/60 p-4">
+          <span className="text-[10px] uppercase tracking-widest text-slate-500 text-center">
+            Warming up — until the work-piece is lubricated
+          </span>
+          <span className="text-4xl font-mono font-bold tabular-nums text-purple-300">
+            {fmtClock(live.warmupRemainingS)}
+          </span>
+        </div>
+      )}
+
       <div className="flex flex-col gap-1">
         <span className="text-[10px] uppercase tracking-widest text-slate-500">
           Phase · hand switch {live.deadmanHeld ? 'held' : 'not held'}

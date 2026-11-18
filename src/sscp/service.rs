@@ -815,6 +815,20 @@ mod imp {
             Command::DepthRate { rating } => {
                 modes.depth.send(DepthControl::Rate(rating)).await.map_err(|e| e.to_string())?;
             }
+            Command::DepthWarmupContinue => {
+                modes
+                    .depth
+                    .send(DepthControl::WarmupContinue)
+                    .await
+                    .map_err(|e| e.to_string())?;
+            }
+            Command::DepthWarmupExtend => {
+                modes
+                    .depth
+                    .send(DepthControl::WarmupExtend)
+                    .await
+                    .map_err(|e| e.to_string())?;
+            }
             Command::DepthStepBack => {
                 modes.depth.send(DepthControl::StepBack).await.map_err(|e| e.to_string())?;
             }

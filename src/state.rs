@@ -578,6 +578,13 @@ pub struct DepthRuntime {
     pub early_release: bool,
     /// Seconds until the next advance / planned retract, when imminent.
     pub cue_soon_s: Option<f32>,
+    /// Time left in the timed warm-up (0 while waiting at the gate); `None`
+    /// outside the warm-up.
+    pub warmup_remaining_s: Option<f32>,
+    /// The timed warm-up has finished and waits for Continue / + more.
+    pub awaiting_warmup_confirm: bool,
+    /// Another warm-up extension is still allowed.
+    pub warmup_can_extend: bool,
 }
 
 #[derive(Debug, Clone)]
