@@ -5,6 +5,9 @@ rust = { version = "stable", components = "rustfmt,clippy" }
 # Matches .github/workflows/pages.yml's actions/setup-node node-version: 22.
 node = "22"
 pnpm = "11.15.1"
+# build.rs compiles the vendored Handy RPC .proto files with prost-build, which
+# needs `protoc` on PATH (the Dockerfile installs it via apt for the Pi build).
+protoc = "36.2"
 
 [tasks.clean]
 description = "Remove untracked build & dependency artifacts (gitignored files only)"
